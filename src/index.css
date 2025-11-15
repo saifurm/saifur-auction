@@ -64,8 +64,8 @@ body {
 }
 
 .hero-title {
-  font-size: clamp(1.2rem, 2vw, 1.6rem);
-  color: #f4f4f5;
+  font-size: clamp(0.95rem, 1.6vw, 1.3rem);
+  color: #b5b5c3;
   margin-bottom: 0.35rem;
 }
 
