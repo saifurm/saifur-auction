@@ -793,6 +793,7 @@ const LiveAuctionBoard = ({
       ? Math.max(activeSlot.basePrice, (auction.activeBid?.amount ?? activeSlot.basePrice) + 1)
       : 0
   );
+  const [voiceConnected, setVoiceConnected] = useState(false);
 
   useEffect(() => {
     if (!activeSlot) return;
@@ -874,6 +875,11 @@ const LiveAuctionBoard = ({
     }
   };
 
+  const toggleVoiceChannel = () => {
+    setVoiceConnected((prev) => !prev);
+    notify("success", !voiceConnected ? "Joined voice chat." : "Left voice chat.");
+  };
+
   const handlePauseToggle = async () => {
     if (!isAdmin) return;
     try {
@@ -938,9 +944,17 @@ const LiveAuctionBoard = ({
             )}
             {isManual && <p className="muted-label">Re-auctioning an unsold player</p>}
           </div>
-          <div className="timer-display">
-            <span>Time left</span>
-            <strong>{timerLabel}</strong>
+          <div className="deck-head-right">
+            <div className="timer-display">
+              <span>Time left</span>
+              <strong>{timerLabel}</strong>
+            </div>
+            <button
+              className={`voice-toggle ${voiceConnected ? "active" : ""}`}
+              onClick={toggleVoiceChannel}
+            >
+              {voiceConnected ? "Leave voice" : "Join voice"}
+            </button>
           </div>
         </div>
         {isAdmin && (

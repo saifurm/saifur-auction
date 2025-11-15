@@ -472,6 +472,29 @@ fieldset {
   flex-wrap: wrap;
 }
 
+.deck-head-right {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 0.5rem;
+}
+
+.voice-toggle {
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  background: transparent;
+  color: #f4f4f5;
+  padding: 0.4rem 1rem;
+  font-size: 0.85rem;
+  cursor: pointer;
+  transition: background 0.3s ease, color 0.3s ease;
+}
+
+.voice-toggle.active {
+  background: rgba(165, 29, 49, 0.85);
+  border-color: transparent;
+}
+
 .admin-controls {
   display: flex;
   flex-wrap: wrap;
