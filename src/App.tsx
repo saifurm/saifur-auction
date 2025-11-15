@@ -681,19 +681,19 @@ const LobbyView = ({
 
   return (
     <section className="panel-card lobby">
-      <div className="lobby-header">
-        <div className="lobby-title-row">
-          <div>
+        <div className="lobby-header">
+          <div className="lobby-title-row">
             <p className="eyebrow">Lobby</p>
-            <h2>{auction.name}</h2>
+            <div className="title-with-badge">
+              <h2>{auction.name}</h2>
+              <span className="join-pill">
+                <span>Joined</span>
+                <strong>
+                  {auction.participantCount}/{auction.maxParticipants}
+                </strong>
+              </span>
+            </div>
           </div>
-          <div className="join-pill">
-            <span>Joined</span>
-            <strong>
-              {auction.participantCount}/{auction.maxParticipants}
-            </strong>
-          </div>
-        </div>
         <div className="share-block">
           <div className="password-row">
             <div>

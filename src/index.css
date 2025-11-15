@@ -347,6 +347,41 @@ fieldset {
   align-items: flex-start;
 }
 
+.lobby-title-row {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.title-with-badge {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.join-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  padding: 0.15rem 0.75rem;
+  font-size: 0.85rem;
+  text-transform: uppercase;
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.join-pill span {
+  letter-spacing: 0.08em;
+  font-size: 0.7rem;
+  color: var(--text-muted);
+}
+
+.join-pill strong {
+  font-size: 0.9rem;
+  color: #fff;
+}
+
 .live-board {
   display: flex;
   flex-direction: column;
