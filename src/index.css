@@ -306,7 +306,7 @@ fieldset {
 
 .info-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  grid-template-columns: repeat(4, minmax(160px, 1fr));
   gap: 1rem;
 }
 
@@ -331,6 +331,7 @@ fieldset {
   display: block;
   font-size: 1.35rem;
   margin-top: 0.2rem;
+  color: #fff;
 }
 
 .muted-label {
