@@ -263,12 +263,10 @@ const App = () => {
       )}
       <header className="hero-header">
         <div>
-          <p className="eyebrow">Saifur Auction</p>
-          <h1>Draft fast. Keep score. Talk smack.</h1>
+          <p className="eyebrow">Midnight Draft Arena</p>
+          <h1>The night begins when the auction starts.</h1>
           <p className="lede">
-            Build a lobby, invite friends with a password, and run a late-night auction
-            without losing your eyes. Clear controls, instant updates, and a results board
-            everyone can trust.
+            Build a lobby, invite friends with a password, and run a late-night live auction.
           </p>
         </div>
         {auction && (
@@ -693,7 +691,7 @@ const LobbyView = ({
           <div className="tag-row">
             <span className="tag">{auction.visibility}</span>
             <span className="tag">{auction.maxParticipants} seats</span>
-            <span className="tag">{auction.playersPerTeam} roster slots</span>
+            <span className="tag">Best XI {auction.playersPerTeam}</span>
           </div>
         </div>
         <div className="share-block">
@@ -729,17 +727,13 @@ const LobbyView = ({
                   <strong>{player.name}</strong>
                   {player.role === "admin" && <span className="mini-pill">Admin</span>}
                 </div>
-                <div className="pill-row">
-                  <span>{formatCurrency(player.budgetRemaining)} left</span>
-                  <span>{player.playersNeeded} slots</span>
-                </div>
               </li>
             ))}
           </ul>
         </div>
         <div className="info-grid">
-          <InfoStat label="Budget per person" value={formatCurrency(auction.budgetPerPlayer)} />
-          <InfoStat label="Categories" value={`${auction.categories.length}`} />
+          <InfoStat label="Total budget" value={formatCurrency(auction.budgetPerPlayer)} />
+          <InfoStat label="Best XI" value={`${auction.playersPerTeam}`} />
           <InfoStat label="Players queued" value={`${auction.totalPlayers}`} />
           <InfoStat label="Visibility" value={auction.visibility.toUpperCase()} />
         </div>
