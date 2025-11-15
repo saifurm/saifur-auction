@@ -19,12 +19,23 @@ import type {
   CategoryConfig,
   Participant,
   PlayerSlot,
-  CompletedPlayerEntry
+  CompletedPlayerEntry,
+  TaggedRosterEntry
 } from "../types";
 import { buildPlayerQueue } from "../utils/players";
 
 const START_TIMER_MS = 60000;
 const ACTIVE_BID_TIMER_MS = 30000;
+
+const getActiveSlot = (auction: Auction, queue: PlayerSlot[]) => {
+  if (auction.manualPlayer) {
+    return { slot: auction.manualPlayer, isManual: true };
+  }
+  return { slot: queue[auction.currentPlayerIndex] ?? null, isManual: false };
+};
+
+const participantCanCoverBid = (participant: Participant, amount: number) =>
+  participant.budgetRemaining >= amount;
 
 export interface CategoryInput {
   id: string;
@@ -99,6 +110,8 @@ export const createAuction = async (input: CreateAuctionInput) => {
     skipVotes: [],
     isPaused: false,
     pausedRemainingMs: null,
+    manualPlayer: null,
+    manualSourceId: null,
     totalPlayers,
     completedPlayers: [],
     results: []
@@ -216,6 +229,8 @@ export const startAuction = async (auctionId: string) => {
       skipVotes: [],
       isPaused: false,
       pausedRemainingMs: null,
+      manualPlayer: null,
+      manualSourceId: null,
       updatedAt: serverTimestamp()
     });
   });
@@ -245,7 +260,7 @@ export const placeBid = async (input: BidInput) => {
     }
 
     const queue = buildPlayerQueue(auction.categories);
-    const currentPlayer = queue[auction.currentPlayerIndex];
+    const { slot: currentPlayer } = getActiveSlot(auction, queue);
     if (!currentPlayer) throw new Error("No active player.");
 
     const participantSnap = await trx.get(participantRef);
@@ -264,13 +279,6 @@ export const placeBid = async (input: BidInput) => {
       throw new Error("Bid exceeds your remaining budget.");
     }
 
-    const minReserveForRoster = Math.max(participant.playersNeeded - 1, 0);
-    if (amount > participant.budgetRemaining - minReserveForRoster) {
-      throw new Error(
-        "You can’t bid that much, you won’t have enough left to complete your team."
-      );
-    }
-
     const nextEndsAt = Timestamp.fromMillis(Date.now() + ACTIVE_BID_TIMER_MS);
     trx.update(auctionRef, {
       activeBid: {
@@ -285,6 +293,8 @@ export const placeBid = async (input: BidInput) => {
       updatedAt: serverTimestamp()
     });
   });
+
+  await maybeResolveLockedAuction(auctionId);
 };
 
 interface SkipInput {
@@ -330,6 +340,8 @@ export const skipPlayer = async (input: SkipInput) => {
 
   if (result.resolve) {
     await finalizeCurrentPlayer({ auctionId, forceUnsold: result.forceUnsold });
+  } else {
+    await maybeResolveLockedAuction(auctionId);
   }
 };
 
@@ -423,7 +435,7 @@ export const finalizeCurrentPlayer = async (input: FinalizeInput) => {
     if (auction.status !== "live") return;
 
     const queue = buildPlayerQueue(auction.categories);
-    const currentPlayer = queue[auction.currentPlayerIndex];
+    const { slot: currentPlayer, isManual } = getActiveSlot(auction, queue);
     if (!currentPlayer) {
       trx.update(auctionRef, {
         status: "ended",
@@ -482,8 +494,32 @@ export const finalizeCurrentPlayer = async (input: FinalizeInput) => {
       };
     }
 
-    const history = [...(auction.completedPlayers ?? []), completedEntry];
-    const next = resolveNextPlayer(auction, queue);
+    let history = [...(auction.completedPlayers ?? [])];
+    if (isManual && auction.manualSourceId) {
+      history = history.map((entry) =>
+        entry.id === auction.manualSourceId ? { ...completedEntry, id: entry.id } : entry
+      );
+    } else {
+      history = [...history, completedEntry];
+    }
+
+    const queueComplete = auction.currentPlayerIndex >= queue.length - 1;
+    const next = isManual
+      ? {
+          updates: {
+            manualPlayer: null,
+            manualSourceId: null,
+            countdownEndsAt: null,
+            countdownDuration: null,
+            activeBid: null,
+            skipVotes: [],
+            isPaused: false,
+            pausedRemainingMs: null,
+            status: queueComplete ? "ended" : auction.status,
+            updatedAt: serverTimestamp()
+          }
+        }
+      : resolveNextPlayer(auction, queue);
 
     trx.update(auctionRef, {
       completedPlayers: history,
@@ -492,13 +528,87 @@ export const finalizeCurrentPlayer = async (input: FinalizeInput) => {
   });
 };
 
-export const submitTeam = async (auctionId: string, clientId: string) => {
+interface SubmitTeamInput {
+  auctionId: string;
+  clientId: string;
+  finalRoster: TaggedRosterEntry[];
+}
+
+export const submitTeam = async (input: SubmitTeamInput) => {
+  const { auctionId, clientId, finalRoster } = input;
   const participantRef = doc(
     collection(doc(db, "auctions", auctionId), "participants"),
     clientId
   );
   await updateDoc(participantRef, {
-    hasSubmittedTeam: true
+    hasSubmittedTeam: true,
+    finalRoster
+  });
+};
+
+const maybeResolveLockedAuction = async (auctionId: string) => {
+  const auctionRef = doc(db, "auctions", auctionId);
+  const auctionSnap = await getDoc(auctionRef);
+  if (!auctionSnap.exists()) return;
+  const auction = auctionSnap.data() as Auction;
+  if (auction.status !== "live" || auction.isPaused || !auction.activeBid) return;
+
+  const queue = buildPlayerQueue(auction.categories);
+  const { slot: currentPlayer } = getActiveSlot(auction, queue);
+  if (!currentPlayer) return;
+
+  const minimumBid = Math.max(currentPlayer.basePrice, auction.activeBid.amount + 1);
+  const participantsSnap = await getDocs(collection(auctionRef, "participants"));
+  const contenders = participantsSnap.docs
+    .map((docSnap) => ({
+      id: docSnap.id,
+      ...(docSnap.data() as Omit<Participant, "id">)
+    }))
+    .filter((participant) => participant.id !== auction.activeBid?.bidderId)
+    .some((participant) => participantCanCoverBid(participant, minimumBid));
+
+  if (!contenders) {
+    await finalizeCurrentPlayer({ auctionId });
+  }
+};
+
+interface RelistInput {
+  auctionId: string;
+  completedPlayerId: string;
+}
+
+export const relistUnsoldPlayer = async (input: RelistInput) => {
+  const { auctionId, completedPlayerId } = input;
+  const auctionRef = doc(db, "auctions", auctionId);
+  await runTransaction(db, async (trx) => {
+    const auctionSnap = await trx.get(auctionRef);
+    if (!auctionSnap.exists()) throw new Error("Auction not found.");
+    const auction = auctionSnap.data() as Auction;
+    const entry = (auction.completedPlayers ?? []).find(
+      (player) => player.id === completedPlayerId
+    );
+    if (!entry || entry.result !== "unsold") {
+      throw new Error("Player not available for re-auction.");
+    }
+
+    trx.update(auctionRef, {
+      status: "live",
+      manualPlayer: {
+        key: `manual-${entry.id}-${Date.now()}`,
+        name: entry.playerName,
+        categoryLabel: entry.categoryLabel,
+        basePrice: entry.basePrice,
+        sourceId: entry.id
+      },
+      manualSourceId: entry.id,
+      countdownEndsAt: Timestamp.fromMillis(Date.now() + START_TIMER_MS),
+      countdownDuration: START_TIMER_MS,
+      activeBid: null,
+      skipVotes: [],
+      isPaused: false,
+      pausedRemainingMs: null,
+      updatedAt: serverTimestamp()
+    });
   });
 };
 
@@ -560,7 +670,7 @@ export const finalizeResults = async (auctionId: string) => {
       participantId: participant.id,
       name: participant.name,
       points: scoreBoard[participant.id] ?? 0,
-      rosterCount: participant.roster?.length ?? 0,
+      rosterCount: participant.finalRoster?.length ?? participant.roster?.length ?? 0,
       budgetRemaining: participant.budgetRemaining
     }))
     .sort((a, b) => b.points - a.points)

@@ -37,6 +37,10 @@ export interface CompletedPlayerEntry {
   resolvedAt?: Timestamp;
 }
 
+export interface ManualPlayerSlot extends PlayerSlot {
+  sourceId?: string | null;
+}
+
 export interface Auction {
   id: string;
   name: string;
@@ -61,6 +65,8 @@ export interface Auction {
   skipVotes?: string[];
   isPaused?: boolean;
   pausedRemainingMs?: number | null;
+  manualPlayer?: ManualPlayerSlot | null;
+  manualSourceId?: string | null;
   completedPlayers?: CompletedPlayerEntry[];
   results?: {
     participantId: string;
@@ -78,6 +84,10 @@ export interface RosterEntry {
   price: number;
 }
 
+export interface TaggedRosterEntry extends RosterEntry {
+  tag?: string;
+}
+
 export interface Participant {
   id: string;
   name: string;
@@ -86,6 +96,7 @@ export interface Participant {
   budgetRemaining: number;
   playersNeeded: number;
   roster: RosterEntry[];
+  finalRoster?: TaggedRosterEntry[];
   hasSubmittedTeam: boolean;
   rankingSubmitted: boolean;
   rankings?: Record<string, number>;

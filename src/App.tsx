@@ -27,8 +27,9 @@ import {
   findAuctionByName,
   joinAuction,
   markAuctionAsRanking,
-  placeBid,
   pauseAuction,
+  placeBid,
+  relistUnsoldPlayer,
   resumeAuction,
   skipPlayer,
   startAuction,
@@ -766,25 +767,23 @@ const LiveAuctionBoard = ({
   notify: (type: ToastState["type"], text: string) => void;
 }) => {
   const queue = useMemo(() => buildPlayerQueue(auction.categories), [auction.categories]);
-  const currentPlayer = queue[auction.currentPlayerIndex] ?? null;
+  const activeSlot = auction.manualPlayer ?? queue[auction.currentPlayerIndex] ?? null;
+  const isManual = Boolean(auction.manualPlayer);
   const { msRemaining } = useCountdown(auction.countdownEndsAt);
   const [bidValue, setBidValue] = useState(() =>
-    currentPlayer
-      ? Math.max(
-          currentPlayer.basePrice,
-          (auction.activeBid?.amount ?? currentPlayer.basePrice) + 1
-        )
+    activeSlot
+      ? Math.max(activeSlot.basePrice, (auction.activeBid?.amount ?? activeSlot.basePrice) + 1)
       : 0
   );
 
   useEffect(() => {
-    if (!currentPlayer) return;
+    if (!activeSlot) return;
     const nextBid = Math.max(
-      currentPlayer.basePrice,
-      (auction.activeBid?.amount ?? currentPlayer.basePrice) + 1
+      activeSlot.basePrice,
+      (auction.activeBid?.amount ?? activeSlot.basePrice) + 1
     );
     setBidValue(nextBid);
-  }, [currentPlayer?.key, auction.activeBid?.amount, auction.activeBid?.bidderId]);
+  }, [activeSlot?.key, auction.activeBid?.amount, auction.activeBid?.bidderId]);
 
   const isAdmin = selfParticipant?.role === "admin";
   const highestBidderId = auction.activeBid?.bidderId;
@@ -816,7 +815,7 @@ const LiveAuctionBoard = ({
               : "Unsold";
           return { slot, status: soldText, tone: entry?.result === "sold" ? "sold" : "unsold" };
         }
-        if (index === auction.currentPlayerIndex) {
+        if (index === auction.currentPlayerIndex && !isManual) {
           return {
             slot,
             status: auction.isPaused ? "Paused" : "Live now",
@@ -829,11 +828,11 @@ const LiveAuctionBoard = ({
           tone: "upcoming"
         };
       }),
-    [queue, auction.currentPlayerIndex, completedMap, auction.isPaused]
+    [queue, auction.currentPlayerIndex, completedMap, auction.isPaused, isManual]
   );
 
   const handleBid = async () => {
-    if (!selfParticipant || !currentPlayer || auction.isPaused) {
+    if (!selfParticipant || !activeSlot || auction.isPaused) {
       return;
     }
     try {
@@ -849,7 +848,7 @@ const LiveAuctionBoard = ({
   };
 
   const handlePass = async () => {
-    if (!selfParticipant || !currentPlayer || auction.isPaused) return;
+    if (!selfParticipant || !activeSlot || auction.isPaused) return;
     try {
       await skipPlayer({ auctionId: auction.id, clientId: selfParticipant.id });
     } catch (error) {
@@ -882,17 +881,30 @@ const LiveAuctionBoard = ({
     }
   };
 
+  const handleRelist = async (playerId: string) => {
+    try {
+      await relistUnsoldPlayer({ auctionId: auction.id, completedPlayerId: playerId });
+      notify("success", "Player moved back to the block.");
+    } catch (error) {
+      notify("error", (error as Error).message);
+    }
+  };
+
   const myRoster = selfParticipant?.roster ?? [];
   const otherPlayers = participants.filter((player) => player.id !== selfParticipant?.id);
+  const unsoldPlayers = useMemo(
+    () => (auction.completedPlayers ?? []).filter((entry) => entry.result === "unsold"),
+    [auction.completedPlayers]
+  );
 
   const timerLabel =
-    auction.isPaused || !currentPlayer
+    auction.isPaused || !activeSlot
       ? auction.isPaused
         ? "PAUSED"
         : "--:--"
       : formatTimer(msRemaining);
 
-  const bidDisabled = !selfParticipant || !currentPlayer || auction.isPaused || isHighestBidder;
+  const bidDisabled = !selfParticipant || !activeSlot || auction.isPaused || isHighestBidder;
 
   return (
     <section className="panel-card live-board">
@@ -900,12 +912,13 @@ const LiveAuctionBoard = ({
         <div className="deck-head">
           <div>
             <p className="eyebrow">On deck</p>
-            <h2>{currentPlayer ? currentPlayer.name : "All players processed"}</h2>
-            {currentPlayer && (
+            <h2>{activeSlot ? activeSlot.name : "No players left"}</h2>
+            {activeSlot && (
               <p>
-                Category {currentPlayer.categoryLabel} - Base {formatCurrency(currentPlayer.basePrice)}
+                Category {activeSlot.categoryLabel} - Base {formatCurrency(activeSlot.basePrice)}
               </p>
             )}
+            {isManual && <p className="muted-label">Re-auctioning an unsold player</p>}
           </div>
           <div className="timer-display">
             <span>Time left</span>
@@ -937,8 +950,8 @@ const LiveAuctionBoard = ({
         <div className="bid-inputs">
           <input
             type="number"
-            min={currentPlayer?.basePrice ?? 0}
-            value={currentPlayer ? bidValue : 0}
+            min={activeSlot?.basePrice ?? 0}
+            value={activeSlot ? bidValue : 0}
             disabled={bidDisabled}
             onChange={(event) => setBidValue(Number(event.target.value))}
           />
@@ -954,7 +967,7 @@ const LiveAuctionBoard = ({
           </button>
           <button
             className="btn outline"
-            disabled={!selfParticipant || !currentPlayer || auction.isPaused || isHighestBidder}
+            disabled={!selfParticipant || !activeSlot || auction.isPaused || isHighestBidder}
             onClick={handlePass}
           >
             {passLabel}
@@ -1032,6 +1045,29 @@ const LiveAuctionBoard = ({
           ))}
         </ol>
       </div>
+      {isAdmin && unsoldPlayers.length > 0 && (
+        <div className="player-order-card">
+          <h3>Unsold players</h3>
+          <p className="muted-label">Bring someone back for a re-auction.</p>
+          <ul className="participant-list compact">
+            {unsoldPlayers.map((entry) => (
+              <li key={entry.id}>
+                <div>
+                  <strong>{entry.playerName}</strong>
+                  <p>Cat {entry.categoryLabel}</p>
+                </div>
+                <button
+                  className="btn outline"
+                  disabled={Boolean(auction.manualPlayer)}
+                  onClick={() => handleRelist(entry.id)}
+                >
+                  Re-open
+                </button>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
     </section>
   );
 };
@@ -1047,62 +1083,192 @@ const TeamConfirmationPanel = ({
   notify: (type: ToastState["type"], text: string) => void;
 }) => {
   const roster = selfParticipant?.roster ?? [];
-  const totalSpent = roster.reduce((sum, player) => sum + player.price, 0);
+  const finalRoster = selfParticipant?.finalRoster ?? [];
+  const limit = auction.playersPerTeam;
+  const rosterWithKeys = useMemo(
+    () => roster.map((player, index) => ({ ...player, key: `${player.playerName}-${index}` })),
+    [roster]
+  );
+  const initialSelection = useMemo(
+    () => rosterWithKeys.slice(0, limit).map((player) => player.key),
+    [rosterWithKeys, limit]
+  );
+  const [selectedKeys, setSelectedKeys] = useState<string[]>(initialSelection);
+  const [tagMap, setTagMap] = useState<Record<string, string>>({});
+
+  useEffect(() => {
+    setSelectedKeys(initialSelection);
+  }, [initialSelection.join("|")]);
+
+  const toggleSelection = (key: string) => {
+    setSelectedKeys((prev) => {
+      if (prev.includes(key)) {
+        return prev.filter((item) => item !== key);
+      }
+      if (prev.length >= limit) {
+        notify("error", `You already picked ${limit} players.`);
+        return prev;
+      }
+      return [...prev, key];
+    });
+  };
+
+  const moveSelection = (key: string, direction: -1 | 1) => {
+    setSelectedKeys((prev) => {
+      const index = prev.findIndex((item) => item === key);
+      if (index === -1) return prev;
+      const targetIndex = index + direction;
+      if (targetIndex < 0 || targetIndex >= prev.length) return prev;
+      const next = [...prev];
+      [next[index], next[targetIndex]] = [next[targetIndex], next[index]];
+      return next;
+    });
+  };
+
+  const handleTagChange = (key: string, value: string) => {
+    setTagMap((prev) => ({ ...prev, [key]: value.slice(0, 3).toUpperCase() }));
+  };
 
   const handleSubmit = async () => {
     if (!selfParticipant) return;
+    if (selectedKeys.length !== limit) {
+      notify("error", `Select exactly ${limit} players before submitting.`);
+      return;
+    }
+    const lineup = selectedKeys
+      .map((key) => rosterWithKeys.find((player) => player.key === key))
+      .filter(Boolean)
+      .map((player) => ({
+        playerName: player!.playerName,
+        categoryLabel: player!.categoryLabel,
+        price: player!.price,
+        tag: tagMap[player!.key] ?? ""
+      }));
+
     try {
-      await submitTeam(auction.id, selfParticipant.id);
-      notify("success", "Team submitted.");
+      await submitTeam({
+        auctionId: auction.id,
+        clientId: selfParticipant.id,
+        finalRoster: lineup
+      });
+      notify("success", "Final squad locked in.");
     } catch (error) {
       notify("error", (error as Error).message);
     }
   };
 
+  const otherPlayers = participants.filter((player) => player.id !== selfParticipant?.id);
+
   return (
     <section className="panel-card">
-      <h2>Review your roster</h2>
-      <div className="roster-grid">
-        <div>
-          <h3>{selfParticipant?.name || "My team"}</h3>
-          <ul>
-            {roster.map((player, index) => (
+      {finalRoster.length > 0 ? (
+        <>
+          <h2>Your final squad</h2>
+          <ol className="ranking-list">
+            {finalRoster.map((player, index) => (
               <li key={`${player.playerName}-${index}`}>
-                <span>{player.playerName}</span>
-                <span>
-                  Cat {player.categoryLabel} - {formatCurrency(player.price)}
-                </span>
+                <div>
+                  <strong>
+                    #{index + 1} {player.playerName}
+                  </strong>
+                  <p>
+                    Cat {player.categoryLabel} - {formatCurrency(player.price)}
+                  </p>
+                </div>
+                {player.tag && <span className="mini-pill">{player.tag}</span>}
               </li>
             ))}
-          </ul>
-          <p>
-            Total spent {formatCurrency(totalSpent)} - Remaining{" "}
-            {formatCurrency(selfParticipant?.budgetRemaining ?? 0)}
-          </p>
-          <button
-            className="btn accent"
-            disabled={selfParticipant?.hasSubmittedTeam}
-            onClick={handleSubmit}
-          >
-            {selfParticipant?.hasSubmittedTeam ? "Submitted" : "Submit team"}
-          </button>
-        </div>
-        <div>
-          <h3>Everyone else</h3>
-          <ul className="participant-list">
-            {participants
-              .filter((player) => player.id !== selfParticipant?.id)
-              .map((player) => (
-                <li key={player.id}>
-                  <div>
-                    <strong>{player.name}</strong>
-                    <p>{player.roster.length} players</p>
-                  </div>
-                  <span>{player.hasSubmittedTeam ? "Submitted" : "Waiting"}</span>
-                </li>
-              ))}
-          </ul>
-        </div>
+          </ol>
+        </>
+      ) : (
+        <>
+          <h2>Choose your final {limit}</h2>
+          <p>Select players, set 3-letter tags, and reorder them before submitting.</p>
+          <div className="roster-grid">
+            <div>
+              <h3>Available</h3>
+              <p className="muted-label">
+                {selectedKeys.length}/{limit} selected
+              </p>
+              <ul className="participant-list">
+                {rosterWithKeys.map((player) => {
+                  const checked = selectedKeys.includes(player.key);
+                  const disabled = !checked && selectedKeys.length >= limit;
+                  return (
+                    <li key={player.key}>
+                      <label>
+                        <input
+                          type="checkbox"
+                          checked={checked}
+                          disabled={disabled}
+                          onChange={() => toggleSelection(player.key)}
+                        />{" "}
+                        {player.playerName} - {formatCurrency(player.price)}
+                      </label>
+                    </li>
+                  );
+                })}
+              </ul>
+            </div>
+            <div>
+              <h3>Selected lineup</h3>
+              {selectedKeys.length === 0 && <p className="muted-label">Pick players to build your lineup.</p>}
+              <ol className="ranking-list">
+                {selectedKeys.map((key, index) => {
+                  const player = rosterWithKeys.find((item) => item.key === key);
+                  if (!player) return null;
+                  return (
+                    <li key={key}>
+                      <div>
+                        <strong>
+                          #{index + 1} {player.playerName}
+                        </strong>
+                        <p>
+                          Cat {player.categoryLabel} - {formatCurrency(player.price)}
+                        </p>
+                      </div>
+                      <div className="rank-actions">
+                        <input
+                          type="text"
+                          maxLength={3}
+                          value={tagMap[key] ?? ""}
+                          onChange={(event) => handleTagChange(key, event.target.value)}
+                          placeholder="TAG"
+                        />
+                        <button className="btn ghost" onClick={() => moveSelection(key, -1)}>
+                          Up
+                        </button>
+                        <button className="btn ghost" onClick={() => moveSelection(key, 1)}>
+                          Down
+                        </button>
+                      </div>
+                    </li>
+                  );
+                })}
+              </ol>
+              <button className="btn accent" disabled={selfParticipant?.hasSubmittedTeam} onClick={handleSubmit}>
+                {selfParticipant?.hasSubmittedTeam ? "Submitted" : "Submit team"}
+              </button>
+            </div>
+          </div>
+        </>
+      )}
+      <div className="roster-card" style={{ marginTop: "1.5rem" }}>
+        <h3>Others</h3>
+        <ul className="participant-list">
+          {otherPlayers.map((player) => (
+            <li key={player.id}>
+              <div>
+                <strong>{player.name}</strong>
+                <p>
+                  {player.finalRoster?.length ?? player.roster.length} picks{" "}
+                  {player.hasSubmittedTeam ? "(Submitted)" : ""}
+                </p>
+              </div>
+              <span>{player.hasSubmittedTeam ? "Locked" : "Pending"}</span>
+            </li>
+          ))}
+        </ul>
       </div>
     </section>
   );
@@ -1158,15 +1324,26 @@ const RankingPanel = ({
         {order.map((participantId, index) => {
           const target = participants.find((item) => item.id === participantId);
           if (!target) return null;
+          const lineup =
+            target.finalRoster && target.finalRoster.length ? target.finalRoster : target.roster;
           return (
             <li key={participantId}>
               <div>
                 <strong>
                   #{index + 1} {target.name}
                 </strong>
-                <p>
-                  {target.roster.length} players - {formatCurrency(target.budgetRemaining)} left
-                </p>
+                <p>{formatCurrency(target.budgetRemaining)} left</p>
+                <ul className="mini-roster">
+                  {lineup.map((player, idx) => {
+                    const tag = "tag" in player && player.tag ? ` (${player.tag})` : "";
+                    return (
+                      <li key={`${player.playerName}-${idx}`}>
+                        {player.playerName}
+                        {tag} - Cat {player.categoryLabel}
+                      </li>
+                    );
+                  })}
+                </ul>
               </div>
               <div className="rank-actions">
                 <button className="btn ghost" onClick={() => move(index, -1)}>
@@ -1246,18 +1423,26 @@ const ResultsBoard = ({
         </table>
       )}
       <div className="results-rosters">
-        {participants.map((player) => (
-          <div key={player.id} className="roster-card">
-            <h4>{player.name}</h4>
-            <ul>
-              {player.roster.map((entry, index) => (
-                <li key={`${entry.playerName}-${index}`}>
-                  {entry.playerName} - {formatCurrency(entry.price)} - Cat {entry.categoryLabel}
-                </li>
-              ))}
-            </ul>
-          </div>
-        ))}
+        {participants.map((player) => {
+          const lineup =
+            player.finalRoster && player.finalRoster.length ? player.finalRoster : player.roster;
+          return (
+            <div key={player.id} className="roster-card">
+              <h4>{player.name}</h4>
+              <ul>
+                {lineup.map((entry, index) => {
+                  const tag = "tag" in entry && entry.tag ? ` (${entry.tag})` : "";
+                  return (
+                    <li key={`${entry.playerName}-${index}`}>
+                      {entry.playerName}
+                      {tag} - {formatCurrency(entry.price)} - Cat {entry.categoryLabel}
+                    </li>
+                  );
+                })}
+             </ul>
+           </div>
+         );
+       })}
       </div>
     </section>
   );

@@ -8,6 +8,7 @@ Full-stack style auction war-room built as a static React app on top of Firebase
 - Admin-driven auction creation with category builder (A-E), player lists, budgets, player counts, password, and visibility toggle.
 - Lobby with live participant list, shareable password chip, and admin controls to start the auction (plus pause/resume once live).
 - Live auction board: timers, pass logic that ends bidding when everyone else is out, pause/resume, budget enforcement, reorganized roster displays, and a queue that shows sold/unsold/up-next players.
+- Admins can relist unsold players after the main queue finishes without rebuilding the auction.
 - Team confirmation -> ranking -> results pipeline with peer scoring and automatic stage progression.
 - Firebase Firestore backend (`auction-9bf14`) for real-time data and persistence.
 
