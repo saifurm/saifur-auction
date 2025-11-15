@@ -682,34 +682,42 @@ const LobbyView = ({
   return (
     <section className="panel-card lobby">
       <div className="lobby-header">
-        <div>
-          <p className="eyebrow">Lobby</p>
-          <h2>{auction.name}</h2>
-          <p className="muted-label">
-            Joined {auction.participantCount}/{auction.maxParticipants}
-          </p>
+        <div className="lobby-title-row">
+          <div>
+            <p className="eyebrow">Lobby</p>
+            <h2>{auction.name}</h2>
+          </div>
+          <div className="join-pill">
+            <span>Joined</span>
+            <strong>
+              {auction.participantCount}/{auction.maxParticipants}
+            </strong>
+          </div>
         </div>
         <div className="share-block">
-          <p className="muted-label">Share this password</p>
-          <div className="password-chip">
-            <strong>{auction.password}</strong>
-            <button
-              className="btn text"
-              onClick={() => {
-                navigator.clipboard.writeText(auction.password);
-                notify("success", "Password copied");
-              }}
-            >
-              Copy
-            </button>
+          <div className="password-row">
+            <div>
+              <p className="muted-label">Share this password</p>
+              <div className="password-chip">
+                <strong>{auction.password}</strong>
+                <button
+                  className="btn text"
+                  onClick={() => {
+                    navigator.clipboard.writeText(auction.password);
+                    notify("success", "Password copied");
+                  }}
+                >
+                  Copy
+                </button>
+              </div>
+            </div>
+            {isAdmin && (
+              <button className="btn accent" onClick={handleStart}>
+                Start auction
+              </button>
+            )}
           </div>
-          {isAdmin ? (
-            <button className="btn accent" onClick={handleStart}>
-              Start auction
-            </button>
-          ) : (
-            <p className="muted-label">Waiting for admin to start</p>
-          )}
+          {!isAdmin && <p className="muted-label">Waiting for admin to start</p>}
         </div>
       </div>
       <div className="lobby-body">
@@ -728,8 +736,9 @@ const LobbyView = ({
         </div>
         <div className="info-grid">
           <InfoStat label="Total budget" value={formatCurrency(auction.budgetPerPlayer)} />
-          <InfoStat label="Players queued" value={`${auction.totalPlayers}`} />
+          <InfoStat label="Players per team" value={`${auction.playersPerTeam}`} />
           <InfoStat label="Categories loaded" value={`${auction.categories.length}`} />
+          <InfoStat label="Players queued" value={`${auction.totalPlayers}`} />
         </div>
       </div>
     </section>

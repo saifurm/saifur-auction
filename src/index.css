@@ -273,6 +273,7 @@ fieldset {
 .participant-list.lobby-list li {
   border-bottom: none;
   padding: 0.6rem 0;
+  color: rgba(255, 255, 255, 0.85);
 }
 
 .tag-row {
