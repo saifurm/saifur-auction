@@ -671,6 +671,7 @@ const LobbyView = ({
   notify: (type: ToastState["type"], text: string) => void;
 }) => {
   const isAdmin = selfParticipant?.role === "admin";
+  const queuedPlayers = useMemo(() => buildPlayerQueue(auction.categories), [auction.categories]);
   const handleStart = async () => {
     try {
       await startAuction(auction.id);
@@ -741,6 +742,26 @@ const LobbyView = ({
           <InfoStat label="Players queued" value={`${auction.totalPlayers}`} />
         </div>
       </div>
+      {queuedPlayers.length > 0 && (
+        <div className="player-order-card lobby-players">
+          <h3>Players loaded</h3>
+          <p className="muted-label">Review the list before the auction starts.</p>
+          <ol className="player-order-list">
+            {queuedPlayers.map((slot, index) => (
+              <li key={slot.key}>
+                <div>
+                  <strong>
+                    {index + 1}. {slot.name}
+                  </strong>
+                  <p>
+                    Cat {slot.categoryLabel} - Base {formatCurrency(slot.basePrice)}
+                  </p>
+                </div>
+              </li>
+            ))}
+          </ol>
+        </div>
+      )}
     </section>
   );
 };
