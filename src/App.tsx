@@ -264,10 +264,8 @@ const App = () => {
       <header className="hero-header">
         <div>
           <p className="eyebrow">Midnight Draft Arena</p>
-          <h1>The night begins when the auction starts.</h1>
-          <p className="lede">
-            Build a lobby, invite friends with a password, and run a late-night live auction.
-          </p>
+          <h1 className="hero-title">Midnight Draft Arena</h1>
+          <p className="lede">The night begins when the auction starts.</p>
         </div>
         {auction && (
           <div className="session-chip">
@@ -689,9 +687,11 @@ const LobbyView = ({
           <p className="eyebrow">Lobby</p>
           <h2>{auction.name}</h2>
           <div className="tag-row">
-            <span className="tag">{auction.visibility}</span>
+            <span className="tag">
+              Joined {auction.participantCount}/{auction.maxParticipants}
+            </span>
             <span className="tag">{auction.maxParticipants} seats</span>
-            <span className="tag">Best XI {auction.playersPerTeam}</span>
+            <span className="tag">Players per team {auction.playersPerTeam}</span>
           </div>
         </div>
         <div className="share-block">
@@ -733,9 +733,12 @@ const LobbyView = ({
         </div>
         <div className="info-grid">
           <InfoStat label="Total budget" value={formatCurrency(auction.budgetPerPlayer)} />
-          <InfoStat label="Best XI" value={`${auction.playersPerTeam}`} />
+          <InfoStat label="Players per team" value={`${auction.playersPerTeam}`} />
           <InfoStat label="Players queued" value={`${auction.totalPlayers}`} />
-          <InfoStat label="Visibility" value={auction.visibility.toUpperCase()} />
+          <InfoStat
+            label="Players joined"
+            value={`${auction.participantCount}/${auction.maxParticipants}`}
+          />
         </div>
       </div>
     </section>

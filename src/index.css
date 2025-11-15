@@ -56,6 +56,14 @@ body {
   font-size: clamp(2rem, 4vw, 3rem);
 }
 
+.hero-title {
+  font-size: clamp(2.5rem, 5vw, 4rem);
+  background: linear-gradient(120deg, #ffffff, #f56d91);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  margin-bottom: 0.25rem;
+}
+
 .lede {
   color: var(--text-muted);
   max-width: 40rem;
