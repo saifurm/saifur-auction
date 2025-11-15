@@ -416,7 +416,7 @@ fieldset {
 
 .player-table {
   display: grid;
-  grid-template-columns: 1fr 140px 140px;
+  grid-template-columns: 1fr 120px 120px;
   align-items: center;
   gap: 1rem;
 }
@@ -425,7 +425,11 @@ fieldset {
   font-size: 0.8rem;
   letter-spacing: 0.08em;
   color: var(--text-muted);
-  margin-bottom: 0.5rem;
+  margin: 0.5rem 0;
+  padding: 0 1rem;
+  display: grid;
+  grid-template-columns: 1fr 120px 120px;
+  text-transform: uppercase;
 }
 
 .player-order-list.table-style li {
@@ -434,6 +438,13 @@ fieldset {
   padding: 0.75rem 1rem;
   background: rgba(255, 255, 255, 0.02);
   box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.03);
+}
+
+@media (max-width: 640px) {
+  .player-table,
+  .player-table-head {
+    grid-template-columns: 1fr 90px 90px;
+  }
 }
 
 .deck-head {
