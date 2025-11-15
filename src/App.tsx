@@ -1025,7 +1025,8 @@ const LiveAuctionBoard = ({
         </div>
       </div>
       <div className="player-order-card">
-        <h3>Player order</h3>
+        <h3>Full player list</h3>
+        <p className="muted-label">Check categories before the auction begins.</p>
         <ol className="player-order-list">
           {playerLedger.map((entry, index) => (
             <li key={entry.slot.key} className={entry.tone}>
