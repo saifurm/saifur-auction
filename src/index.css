@@ -445,8 +445,8 @@ fieldset {
 }
 .player-table-head span:nth-of-type(1),
 .player-table span:nth-of-type(1) {
-  text-align: right;
-  min-width: 70px;
+  text-align: left;
+  min-width: auto;
 }
 
 .player-table-head span:last-of-type,
