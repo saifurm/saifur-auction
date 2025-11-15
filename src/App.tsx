@@ -300,8 +300,7 @@ const LandingHero = ({
   <section className="landing-card">
     <h2>Let's play auction.</h2>
     <p>
-      Spin up a lobby, share one password, and let your crew buy players without digging
-      through spreadsheets.
+      Start a lobby, share the password, and run a live late-night auction with your friends.
     </p>
     <div className="landing-actions">
       <button className="btn accent" onClick={onCreate}>
