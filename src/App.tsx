@@ -282,7 +282,7 @@ const App = () => {
         )}
       </header>
       <main className="stage-panel">{loading ? <p>Loading...</p> : renderView()}</main>
-      <footer className="app-footer">Designed by Saifur</footer>
+      <footer className="app-footer">© Saifur Rahman Mehedi</footer>
     </div>
   );
 };
