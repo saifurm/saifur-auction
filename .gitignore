@@ -1,0 +1,9 @@
+# Runtime artifacts
+*.log
+*.err
+
+# Build artifacts
+dist
+.DS_Store
+node_modules
+*.tsbuildinfo
