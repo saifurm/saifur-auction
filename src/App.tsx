@@ -263,9 +263,8 @@ const App = () => {
       )}
       <header className="hero-header">
         <div>
-          <p className="eyebrow">Midnight Draft Arena</p>
           <h1 className="hero-title">Midnight Draft Arena</h1>
-          <p className="lede">The night begins when the auction starts.</p>
+          <p className="hero-subtitle">The night begins when the auction starts.</p>
         </div>
         {auction && (
           <div className="session-chip">
@@ -686,13 +685,9 @@ const LobbyView = ({
         <div>
           <p className="eyebrow">Lobby</p>
           <h2>{auction.name}</h2>
-          <div className="tag-row">
-            <span className="tag">
-              Joined {auction.participantCount}/{auction.maxParticipants}
-            </span>
-            <span className="tag">{auction.maxParticipants} seats</span>
-            <span className="tag">Players per team {auction.playersPerTeam}</span>
-          </div>
+          <p className="muted-label">
+            Joined {auction.participantCount}/{auction.maxParticipants}
+          </p>
         </div>
         <div className="share-block">
           <p className="muted-label">Share this password</p>
@@ -720,7 +715,7 @@ const LobbyView = ({
       <div className="lobby-body">
         <div>
           <h3>Players in lobby</h3>
-          <ul className="participant-list">
+          <ul className="participant-list lobby-list">
             {participants.map((player) => (
               <li key={player.id}>
                 <div className="name-stack">
@@ -733,12 +728,8 @@ const LobbyView = ({
         </div>
         <div className="info-grid">
           <InfoStat label="Total budget" value={formatCurrency(auction.budgetPerPlayer)} />
-          <InfoStat label="Players per team" value={`${auction.playersPerTeam}`} />
           <InfoStat label="Players queued" value={`${auction.totalPlayers}`} />
-          <InfoStat
-            label="Players joined"
-            value={`${auction.participantCount}/${auction.maxParticipants}`}
-          />
+          <InfoStat label="Categories loaded" value={`${auction.categories.length}`} />
         </div>
       </div>
     </section>

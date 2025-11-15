@@ -52,21 +52,21 @@ body {
 }
 
 .hero-header h1 {
-  margin: 0 0 0.75rem;
-  font-size: clamp(2rem, 4vw, 3rem);
+  margin: 0;
 }
 
 .hero-title {
-  font-size: clamp(2.5rem, 5vw, 4rem);
+  font-size: clamp(2.2rem, 4vw, 3rem);
   background: linear-gradient(120deg, #ffffff, #f56d91);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
-  margin-bottom: 0.25rem;
+  margin-bottom: 0.4rem;
 }
 
-.lede {
+.hero-subtitle {
+  font-size: clamp(1rem, 2vw, 1.4rem);
+  margin: 0;
   color: var(--text-muted);
-  max-width: 40rem;
 }
 
 .header-actions {
@@ -268,6 +268,11 @@ fieldset {
   gap: 1rem;
   padding: 1rem;
   border-bottom: 1px solid var(--border-color);
+}
+
+.participant-list.lobby-list li {
+  border-bottom: none;
+  padding: 0.6rem 0;
 }
 
 .tag-row {
