@@ -472,13 +472,6 @@ fieldset {
   flex-wrap: wrap;
 }
 
-.deck-head-right {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-end;
-  gap: 0.5rem;
-}
-
 .voice-toggle {
   border-radius: 999px;
   border: 1px solid rgba(255, 255, 255, 0.2);
@@ -488,6 +481,16 @@ fieldset {
   font-size: 0.85rem;
   cursor: pointer;
   transition: background 0.3s ease, color 0.3s ease;
+}
+
+.voice-toggle.icon {
+  width: 40px;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.1rem;
+  padding: 0;
 }
 
 .voice-toggle.active {

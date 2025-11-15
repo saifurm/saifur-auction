@@ -943,19 +943,18 @@ const LiveAuctionBoard = ({
               </p>
             )}
             {isManual && <p className="muted-label">Re-auctioning an unsold player</p>}
-          </div>
-          <div className="deck-head-right">
             <div className="timer-display">
               <span>Time left</span>
               <strong>{timerLabel}</strong>
             </div>
-            <button
-              className={`voice-toggle ${voiceConnected ? "active" : ""}`}
-              onClick={toggleVoiceChannel}
-            >
-              {voiceConnected ? "Leave voice" : "Join voice"}
-            </button>
           </div>
+          <button
+            className={`voice-toggle icon ${voiceConnected ? "active" : ""}`}
+            onClick={toggleVoiceChannel}
+            aria-label={voiceConnected ? "Leave voice" : "Join voice"}
+          >
+            <span>{voiceConnected ? "🔊" : "🎙"}</span>
+          </button>
         </div>
         {isAdmin && (
           <div className="admin-controls">
