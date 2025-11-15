@@ -1,4 +1,4 @@
-import {
+﻿import {
   useEffect,
   useMemo,
   useRef,
@@ -19,7 +19,7 @@ import { useAuctionData } from "./hooks/useAuctionData";
 import { useCountdown } from "./hooks/useCountdown";
 import { formatCurrency, formatTimer } from "./utils/format";
 import { buildPlayerQueue } from "./utils/players";
-import type { Auction, Participant } from "./types";
+import type { Auction, Participant, CompletedPlayerEntry } from "./types";
 import {
   createAuction,
   finalizeCurrentPlayer,
@@ -28,6 +28,8 @@ import {
   joinAuction,
   markAuctionAsRanking,
   placeBid,
+  pauseAuction,
+  resumeAuction,
   skipPlayer,
   startAuction,
   submitRanking,
@@ -260,40 +262,28 @@ const App = () => {
       )}
       <header className="hero-header">
         <div>
-          <p className="eyebrow">Stanford × Harvard × Stony Brook inspired</p>
-          <h1>Midnight Auction War Room</h1>
+          <p className="eyebrow">Saifur Auction</p>
+          <h1>Draft fast. Keep score. Talk smack.</h1>
           <p className="lede">
-            Blacked-out interface to protect your eyes, optimized for billion-dollar
-            banter. Create a lobby, invite friends with a password, and let the bidding
-            chaos begin.
+            Build a lobby, invite friends with a password, and run a late-night auction
+            without losing your eyes. Clear controls, instant updates, and a results board
+            everyone can trust.
           </p>
         </div>
-        <div className="header-actions">
-          {!["create", "join"].includes(view) && (
-            <>
-              <button className="btn primary" onClick={() => setView("create")}>
-                Create Auction
-              </button>
-              <button className="btn ghost" onClick={() => setView("join")}>
-                Join Auction
-              </button>
-            </>
-          )}
-          {auction && (
-            <div className="session-chip">
-              <div>
-                <p className="chip-label">Active Auction</p>
-                <p className="chip-value">
-                  {auction.name} •{" "}
-                  <span className="status-pill">{auction.status.toUpperCase()}</span>
-                </p>
-              </div>
-              <button className="btn text" onClick={handleLeaveSession}>
-                Leave
-              </button>
+        {auction && (
+          <div className="session-chip">
+            <div>
+              <p className="chip-label">Active auction</p>
+              <p className="chip-value">
+                {auction.name} -{" "}
+                <span className="status-pill">{auction.status.toUpperCase()}</span>
+              </p>
             </div>
-          )}
-        </div>
+            <button className="btn text" onClick={handleLeaveSession}>
+              Leave
+            </button>
+          </div>
+        )}
       </header>
       <main className="stage-panel">{loading ? <p>Loading...</p> : renderView()}</main>
     </div>
@@ -312,17 +302,17 @@ const LandingHero = ({
   onResume: (() => void) | null;
 }) => (
   <section className="landing-card">
-    <h2>Let’s play auction.</h2>
+    <h2>Let's play auction.</h2>
     <p>
-      Spin up a lobby, share the name + password with friends, and run the most dramatic
-      player draft of the season.
+      Spin up a lobby, share one password, and let your crew buy players without digging
+      through spreadsheets.
     </p>
     <div className="landing-actions">
       <button className="btn accent" onClick={onCreate}>
-        Create Auction
+        Create auction
       </button>
       <button className="btn outline" onClick={onJoin}>
-        Join Auction
+        Join auction
       </button>
     </div>
     {hasActiveAuction && onResume && (
@@ -332,7 +322,6 @@ const LandingHero = ({
     )}
   </section>
 );
-
 const CreateAuctionForm = ({
   clientId,
   onBack,
@@ -428,12 +417,12 @@ const CreateAuctionForm = ({
   return (
     <section className="panel-card">
       <button className="btn text" onClick={onBack}>
-        ← Back
+        Back
       </button>
       <h2>Create Auction</h2>
       <form className="form-grid" onSubmit={handleSubmit}>
         <label>
-          Admin name (you’ll play too)
+          Admin name (you'll play too)
           <input
             type="text"
             value={adminName}
@@ -541,18 +530,18 @@ const CreateAuctionForm = ({
                 onChange={(event) =>
                   updateCategory(category.id, { playersText: event.target.value })
                 }
-                placeholder="Messi, Ronaldo, Neymar, Mbappé"
+                placeholder="Messi, Ronaldo, Neymar, Mbappe"
               />
             </div>
           ))}
           {categories.length < CATEGORY_LABELS.length && (
             <button type="button" className="btn outline" onClick={addCategory}>
-              Add new category (B–E)
+              Add new category (B-E)
             </button>
           )}
         </div>
         <button className="btn accent" disabled={saving}>
-          {saving ? "Creating…" : "Create Auction"}
+          {saving ? "Creating..." : "Create Auction"}
         </button>
       </form>
     </section>
@@ -605,7 +594,7 @@ const JoinAuctionPanel = ({
   return (
     <section className="panel-card join-panel">
       <button className="btn text" onClick={onBack}>
-        ← Back
+        Back
       </button>
       <div className="join-grid">
         <form onSubmit={handleJoin} className="form-grid">
@@ -639,7 +628,7 @@ const JoinAuctionPanel = ({
             />
           </label>
           <button className="btn accent" disabled={pending}>
-            {pending ? "Joining…" : "Join Auction"}
+            {pending ? "Joining..." : "Join auction"}
           </button>
         </form>
         <div className="public-list">
@@ -651,7 +640,7 @@ const JoinAuctionPanel = ({
                 <div>
                   <strong>{item.name}</strong>
                   <p>
-                    {item.participantCount}/{item.maxParticipants} players ·{" "}
+                    {item.participantCount}/{item.maxParticipants} players -{" "}
                     {item.categories.length} categories
                   </p>
                 </div>
@@ -702,19 +691,19 @@ const LobbyView = ({
           <h2>{auction.name}</h2>
           <div className="tag-row">
             <span className="tag">{auction.visibility}</span>
-            <span className="tag">Max {auction.maxParticipants} players</span>
+            <span className="tag">{auction.maxParticipants} seats</span>
             <span className="tag">{auction.playersPerTeam} roster slots</span>
           </div>
         </div>
-        <div>
-          <p>Share this password</p>
+        <div className="share-block">
+          <p className="muted-label">Share this password</p>
           <div className="password-chip">
             <strong>{auction.password}</strong>
             <button
               className="btn text"
               onClick={() => {
                 navigator.clipboard.writeText(auction.password);
-                notify("success", "Password copied.");
+                notify("success", "Password copied");
               }}
             >
               Copy
@@ -722,10 +711,10 @@ const LobbyView = ({
           </div>
           {isAdmin ? (
             <button className="btn accent" onClick={handleStart}>
-              Start Auction
+              Start auction
             </button>
           ) : (
-            <p>Waiting for admin to start…</p>
+            <p className="muted-label">Waiting for admin to start</p>
           )}
         </div>
       </div>
@@ -735,21 +724,21 @@ const LobbyView = ({
           <ul className="participant-list">
             {participants.map((player) => (
               <li key={player.id}>
-                <div>
+                <div className="name-stack">
                   <strong>{player.name}</strong>
-                  <p>{player.role === "admin" ? "Admin" : "Player"}</p>
+                  {player.role === "admin" && <span className="mini-pill">Admin</span>}
                 </div>
-                <span>
-                  Budget {formatCurrency(player.budgetRemaining)} · Needs{" "}
-                  {player.playersNeeded}
-                </span>
+                <div className="pill-row">
+                  <span>{formatCurrency(player.budgetRemaining)} left</span>
+                  <span>{player.playersNeeded} slots</span>
+                </div>
               </li>
             ))}
           </ul>
         </div>
         <div className="info-grid">
-          <InfoStat label="Total budget" value={formatCurrency(auction.budgetPerPlayer)} />
-          <InfoStat label="Categories loaded" value={`${auction.categories.length}`} />
+          <InfoStat label="Budget per person" value={formatCurrency(auction.budgetPerPlayer)} />
+          <InfoStat label="Categories" value={`${auction.categories.length}`} />
           <InfoStat label="Players queued" value={`${auction.totalPlayers}`} />
           <InfoStat label="Visibility" value={auction.visibility.toUpperCase()} />
         </div>
@@ -797,9 +786,54 @@ const LiveAuctionBoard = ({
     setBidValue(nextBid);
   }, [currentPlayer?.key, auction.activeBid?.amount, auction.activeBid?.bidderId]);
 
+  const isAdmin = selfParticipant?.role === "admin";
+  const highestBidderId = auction.activeBid?.bidderId;
+  const isHighestBidder = Boolean(highestBidderId && highestBidderId === selfParticipant?.id);
+  const skipVotes = auction.skipVotes ?? [];
+  const passes = auction.activeBid
+    ? skipVotes.filter((id) => id !== highestBidderId).length
+    : skipVotes.length;
+  const passesNeeded = auction.activeBid
+    ? Math.max(auction.participantCount - 1, 1)
+    : Math.max(auction.participantCount, 1);
+  const passLabel = auction.activeBid ? "Pass" : "Skip";
+  const passCountdown = Math.max(passesNeeded - passes, 0);
+
+  const completedMap = useMemo(() => {
+    const map = new Map<string, CompletedPlayerEntry>();
+    (auction.completedPlayers ?? []).forEach((entry) => map.set(entry.id, entry));
+    return map;
+  }, [auction.completedPlayers]);
+
+  const playerLedger = useMemo(
+    () =>
+      queue.map((slot, index) => {
+        const entry = completedMap.get(slot.key);
+        if (index < auction.currentPlayerIndex) {
+          const soldText =
+            entry?.result === "sold"
+              ? `Sold to ${entry?.winnerName ?? "Unknown"} (${formatCurrency(entry?.finalBid ?? 0)})`
+              : "Unsold";
+          return { slot, status: soldText, tone: entry?.result === "sold" ? "sold" : "unsold" };
+        }
+        if (index === auction.currentPlayerIndex) {
+          return {
+            slot,
+            status: auction.isPaused ? "Paused" : "Live now",
+            tone: "live"
+          };
+        }
+        return {
+          slot,
+          status: index === auction.currentPlayerIndex + 1 ? "Next up" : "Queued",
+          tone: "upcoming"
+        };
+      }),
+    [queue, auction.currentPlayerIndex, completedMap, auction.isPaused]
+  );
+
   const handleBid = async () => {
-    if (!selfParticipant) {
-      notify("error", "Join the lobby to bid.");
+    if (!selfParticipant || !currentPlayer || auction.isPaused) {
       return;
     }
     try {
@@ -814,8 +848,8 @@ const LiveAuctionBoard = ({
     }
   };
 
-  const handleSkip = async () => {
-    if (!selfParticipant) return;
+  const handlePass = async () => {
+    if (!selfParticipant || !currentPlayer || auction.isPaused) return;
     try {
       await skipPlayer({ auctionId: auction.id, clientId: selfParticipant.id });
     } catch (error) {
@@ -823,7 +857,21 @@ const LiveAuctionBoard = ({
     }
   };
 
+  const handlePauseToggle = async () => {
+    if (!isAdmin) return;
+    try {
+      if (auction.isPaused) {
+        await resumeAuction(auction.id);
+      } else {
+        await pauseAuction(auction.id);
+      }
+    } catch (error) {
+      notify("error", (error as Error).message);
+    }
+  };
+
   const handleManualResolve = async () => {
+    if (!isAdmin) return;
     try {
       await finalizeCurrentPlayer({
         auctionId: auction.id,
@@ -834,114 +882,159 @@ const LiveAuctionBoard = ({
     }
   };
 
-  const skipCount = auction.skipVotes?.length ?? 0;
-  const completed = auction.completedPlayers ?? [];
-  const totalPlayers = queue.length;
-  const progress = Math.min(
-    totalPlayers,
-    Math.max(0, auction.currentPlayerIndex + (currentPlayer ? 1 : 0))
-  );
+  const myRoster = selfParticipant?.roster ?? [];
+  const otherPlayers = participants.filter((player) => player.id !== selfParticipant?.id);
+
+  const timerLabel =
+    auction.isPaused || !currentPlayer
+      ? auction.isPaused
+        ? "PAUSED"
+        : "--:--"
+      : formatTimer(msRemaining);
+
+  const bidDisabled = !selfParticipant || !currentPlayer || auction.isPaused || isHighestBidder;
 
   return (
     <section className="panel-card live-board">
-      <div className="live-main">
-        <div>
-          <p className="eyebrow">On the block</p>
-          <h2>{currentPlayer ? currentPlayer.name : "All players processed"}</h2>
-          {currentPlayer && (
-            <p>
-              Category {currentPlayer.categoryLabel} · Base price{" "}
-              {formatCurrency(currentPlayer.basePrice)}
-            </p>
-          )}
+      <div className="deck-card">
+        <div className="deck-head">
+          <div>
+            <p className="eyebrow">On deck</p>
+            <h2>{currentPlayer ? currentPlayer.name : "All players processed"}</h2>
+            {currentPlayer && (
+              <p>
+                Category {currentPlayer.categoryLabel} - Base {formatCurrency(currentPlayer.basePrice)}
+              </p>
+            )}
+          </div>
+          <div className="timer-display">
+            <span>Time left</span>
+            <strong>{timerLabel}</strong>
+          </div>
         </div>
-        <div className="timer-display">
-          <span>Time left</span>
-          <strong>{formatTimer(msRemaining)}</strong>
-        </div>
-        {currentPlayer && (
-          <div className="bid-panel">
-            <div>
-              <p>Current highest bid</p>
-              {auction.activeBid ? (
-                <strong>
-                  {formatCurrency(auction.activeBid.amount)} by {auction.activeBid.bidderName}
-                </strong>
-              ) : (
-                <strong>No bids yet (starts at {formatCurrency(currentPlayer.basePrice)})</strong>
-              )}
-            </div>
-            <div className="bid-inputs">
-              <input
-                type="number"
-                min={currentPlayer.basePrice}
-                value={bidValue}
-                onChange={(event) => setBidValue(Number(event.target.value))}
-              />
-              <button className="btn accent" onClick={handleBid}>
-                Place bid
-              </button>
-              <button className="btn ghost" onClick={() => setBidValue((value) => value + 1)}>
-                +1
-              </button>
-              <button className="btn outline" onClick={handleSkip}>
-                Skip ({skipCount}/{auction.participantCount})
-              </button>
-            </div>
+        {isAdmin && (
+          <div className="admin-controls">
+            <button className="btn ghost" onClick={handlePauseToggle}>
+              {auction.isPaused ? "Resume auction" : "Pause auction"}
+            </button>
+            <button className="btn text" onClick={handleManualResolve}>
+              Resolve player
+            </button>
           </div>
         )}
-        <div className="progress-bar">
-          <div style={{ width: `${(progress / Math.max(totalPlayers, 1)) * 100}%` }} />
+      </div>
+      <div className="bid-card">
+        <div className="bid-header">
+          <h3>Current bid</h3>
+          {auction.activeBid ? (
+            <p>
+              {formatCurrency(auction.activeBid.amount)} by {auction.activeBid.bidderName}
+            </p>
+          ) : (
+            <p>No bids yet</p>
+          )}
         </div>
-        <p>
-          Player {progress}/{totalPlayers}
+        <div className="bid-inputs">
+          <input
+            type="number"
+            min={currentPlayer?.basePrice ?? 0}
+            value={currentPlayer ? bidValue : 0}
+            disabled={bidDisabled}
+            onChange={(event) => setBidValue(Number(event.target.value))}
+          />
+          <button className="btn accent" disabled={bidDisabled} onClick={handleBid}>
+            Place bid
+          </button>
+          <button
+            className="btn ghost"
+            disabled={bidDisabled}
+            onClick={() => setBidValue((value) => value + 1)}
+          >
+            +1
+          </button>
+          <button
+            className="btn outline"
+            disabled={!selfParticipant || !currentPlayer || auction.isPaused || isHighestBidder}
+            onClick={handlePass}
+          >
+            {passLabel}
+          </button>
+        </div>
+        <p className="muted-label">
+          {passCountdown === 0
+            ? "Waiting for confirmation..."
+            : `${passCountdown} more ${passLabel.toLowerCase()}${passCountdown === 1 ? "" : "s"} needed`}
         </p>
-        <div className="completed-grid">
-          <h3>Recent outcomes</h3>
-          {completed.length === 0 && <p>No players sold yet.</p>}
-          <ul>
-            {completed.slice().reverse().map((entry) => (
-              <li key={entry.id}>
-                <strong>{entry.playerName}</strong>
-                <span>Cat {entry.categoryLabel}</span>
-                {entry.result === "sold" ? (
-                  <p>
-                    Sold to {entry.winnerName} for {formatCurrency(entry.finalBid ?? 0)}
-                  </p>
-                ) : (
-                  <p>Unsold</p>
-                )}
+        {isHighestBidder && (
+          <p className="muted-label">You already hold the top bid. Let someone else raise.</p>
+        )}
+        {auction.isPaused && <p className="muted-label">Auction is paused.</p>}
+      </div>
+      <div className="roster-grid live-roster">
+        <div className="roster-card">
+          <h3>My bench</h3>
+          <p>
+            {selfParticipant?.name ?? "You"} - {formatCurrency(selfParticipant?.budgetRemaining ?? 0)} left -{" "}
+            {selfParticipant?.playersNeeded ?? auction.playersPerTeam} slots
+          </p>
+          <ul className="roster-list">
+            {myRoster.length === 0 && <li>No players yet.</li>}
+            {myRoster.map((player, index) => (
+              <li key={`${player.playerName}-${index}`}>
+                <span>{player.playerName}</span>
+                <span>
+                  Cat {player.categoryLabel} - {formatCurrency(player.price)}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </div>
+        <div className="roster-card">
+          <h3>Other coaches</h3>
+          <ul className="other-coaches">
+            {otherPlayers.map((player) => (
+              <li key={player.id}>
+                <div className="name-stack">
+                  <strong>{player.name}</strong>
+                </div>
+                <div className="pill-row">
+                  <span>{formatCurrency(player.budgetRemaining)} left</span>
+                  <span>{player.playersNeeded} slots</span>
+                </div>
+                <ul className="mini-roster">
+                  {player.roster.map((entry, idx) => (
+                    <li key={`${entry.playerName}-${idx}`}>
+                      {entry.playerName} - {formatCurrency(entry.price)}
+                    </li>
+                  ))}
+                  {player.roster.length === 0 && <li>No picks yet.</li>}
+                </ul>
               </li>
             ))}
           </ul>
         </div>
       </div>
-      <div className="sidebar">
-        <h3>Players</h3>
-        <ul className="participant-list compact">
-          {participants.map((player) => (
-            <li key={player.id}>
+      <div className="player-order-card">
+        <h3>Player order</h3>
+        <ol className="player-order-list">
+          {playerLedger.map((entry, index) => (
+            <li key={entry.slot.key} className={entry.tone}>
               <div>
-                <strong>{player.name}</strong>
-                <p>{player.role === "admin" ? "Admin" : "Player"}</p>
+                <strong>
+                  {index + 1}. {entry.slot.name}
+                </strong>
+                <p>
+                  Cat {entry.slot.categoryLabel} - Base {formatCurrency(entry.slot.basePrice)}
+                </p>
               </div>
-              <div>
-                <span>{formatCurrency(player.budgetRemaining)}</span>
-                <small>{player.playersNeeded} slots left</small>
-              </div>
+              <span>{entry.status}</span>
             </li>
           ))}
-        </ul>
-        {selfParticipant?.role === "admin" && (
-          <button className="btn outline" onClick={handleManualResolve}>
-            Force resolve current player
-          </button>
-        )}
+        </ol>
       </div>
     </section>
   );
 };
-
 const TeamConfirmationPanel = ({
   auction,
   participants,
@@ -977,13 +1070,13 @@ const TeamConfirmationPanel = ({
               <li key={`${player.playerName}-${index}`}>
                 <span>{player.playerName}</span>
                 <span>
-                  Cat {player.categoryLabel} · {formatCurrency(player.price)}
+                  Cat {player.categoryLabel} - {formatCurrency(player.price)}
                 </span>
               </li>
             ))}
           </ul>
           <p>
-            Total spent {formatCurrency(totalSpent)} · Remaining{" "}
+            Total spent {formatCurrency(totalSpent)} - Remaining{" "}
             {formatCurrency(selfParticipant?.budgetRemaining ?? 0)}
           </p>
           <button
@@ -1072,15 +1165,15 @@ const RankingPanel = ({
                   #{index + 1} {target.name}
                 </strong>
                 <p>
-                  {target.roster.length} players · {formatCurrency(target.budgetRemaining)} left
+                  {target.roster.length} players - {formatCurrency(target.budgetRemaining)} left
                 </p>
               </div>
               <div className="rank-actions">
                 <button className="btn ghost" onClick={() => move(index, -1)}>
-                  ↑
+                  Up
                 </button>
                 <button className="btn ghost" onClick={() => move(index, 1)}>
-                  ↓
+                  Down
                 </button>
               </div>
             </li>
@@ -1099,7 +1192,7 @@ const RankingPanel = ({
         <ul>
           {participants.map((player) => (
             <li key={player.id}>
-              {player.name} –{" "}
+              {player.name} -{" "}
               {player.id === selfParticipant?.id
                 ? selfParticipant.rankingSubmitted
                   ? "Done"
@@ -1127,7 +1220,7 @@ const ResultsBoard = ({
   return (
     <section className="panel-card">
       <h2>Final leaderboard</h2>
-      {!results.length && <p>Waiting for admin to publish results…</p>}
+      {!results.length && <p>Waiting for admin to publish results...</p>}
       {results.length > 0 && (
         <table className="results-table">
           <thead>
@@ -1159,7 +1252,7 @@ const ResultsBoard = ({
             <ul>
               {player.roster.map((entry, index) => (
                 <li key={`${entry.playerName}-${index}`}>
-                  {entry.playerName} – {formatCurrency(entry.price)} · Cat {entry.categoryLabel}
+                  {entry.playerName} - {formatCurrency(entry.price)} - Cat {entry.categoryLabel}
                 </li>
               ))}
             </ul>

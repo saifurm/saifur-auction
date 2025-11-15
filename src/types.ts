@@ -59,6 +59,8 @@ export interface Auction {
   countdownDuration?: number;
   activeBid?: ActiveBid | null;
   skipVotes?: string[];
+  isPaused?: boolean;
+  pausedRemainingMs?: number | null;
   completedPlayers?: CompletedPlayerEntry[];
   results?: {
     participantId: string;

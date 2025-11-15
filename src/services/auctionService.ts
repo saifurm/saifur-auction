@@ -97,6 +97,8 @@ export const createAuction = async (input: CreateAuctionInput) => {
     countdownDuration: START_TIMER_MS,
     activeBid: null,
     skipVotes: [],
+    isPaused: false,
+    pausedRemainingMs: null,
     totalPlayers,
     completedPlayers: [],
     results: []
@@ -212,6 +214,8 @@ export const startAuction = async (auctionId: string) => {
       countdownDuration: START_TIMER_MS,
       activeBid: null,
       skipVotes: [],
+      isPaused: false,
+      pausedRemainingMs: null,
       updatedAt: serverTimestamp()
     });
   });
@@ -235,6 +239,9 @@ export const placeBid = async (input: BidInput) => {
     const auction = auctionSnap.data() as Auction;
     if (auction.status !== "live") {
       throw new Error("Auction is not live.");
+    }
+    if (auction.isPaused) {
+      throw new Error("Auction is paused.");
     }
 
     const queue = buildPlayerQueue(auction.categories);
@@ -289,12 +296,13 @@ export const skipPlayer = async (input: SkipInput) => {
   const { auctionId, clientId } = input;
   const auctionRef = doc(db, "auctions", auctionId);
 
-  const shouldResolve = await runTransaction(db, async (trx) => {
+  const result = await runTransaction(db, async (trx) => {
     const auctionSnap = await trx.get(auctionRef);
     if (!auctionSnap.exists()) throw new Error("Auction not found.");
     const auction = auctionSnap.data() as Auction;
-    if (auction.status !== "live") return false;
-    if (auction.activeBid) return false;
+    if (auction.status !== "live" || auction.isPaused) {
+      return { resolve: false, forceUnsold: false };
+    }
 
     const votes = new Set(auction.skipVotes ?? []);
     votes.add(clientId);
@@ -304,12 +312,66 @@ export const skipPlayer = async (input: SkipInput) => {
       updatedAt: serverTimestamp()
     });
 
-    return skipVotes.length >= auction.participantCount;
+    const activeBid = auction.activeBid;
+    if (activeBid) {
+      const passes = skipVotes.filter((id) => id !== activeBid.bidderId).length;
+      const required = Math.max(auction.participantCount - 1, 1);
+      return {
+        resolve: passes >= required,
+        forceUnsold: false
+      };
+    }
+
+    return {
+      resolve: skipVotes.length >= auction.participantCount,
+      forceUnsold: true
+    };
   });
 
-  if (shouldResolve) {
-    await finalizeCurrentPlayer({ auctionId, forceUnsold: true });
+  if (result.resolve) {
+    await finalizeCurrentPlayer({ auctionId, forceUnsold: result.forceUnsold });
   }
+};
+
+export const pauseAuction = async (auctionId: string) => {
+  const auctionRef = doc(db, "auctions", auctionId);
+  await runTransaction(db, async (trx) => {
+    const auctionSnap = await trx.get(auctionRef);
+    if (!auctionSnap.exists()) throw new Error("Auction not found.");
+    const auction = auctionSnap.data() as Auction;
+    if (auction.status !== "live" || auction.isPaused) {
+      return;
+    }
+    const remaining = auction.countdownEndsAt
+      ? Math.max(auction.countdownEndsAt.toMillis() - Date.now(), 0)
+      : auction.countdownDuration ?? START_TIMER_MS;
+    trx.update(auctionRef, {
+      isPaused: true,
+      pausedRemainingMs: remaining,
+      countdownEndsAt: null,
+      updatedAt: serverTimestamp()
+    });
+  });
+};
+
+export const resumeAuction = async (auctionId: string) => {
+  const auctionRef = doc(db, "auctions", auctionId);
+  await runTransaction(db, async (trx) => {
+    const auctionSnap = await trx.get(auctionRef);
+    if (!auctionSnap.exists()) throw new Error("Auction not found.");
+    const auction = auctionSnap.data() as Auction;
+    if (auction.status !== "live" || !auction.isPaused) {
+      return;
+    }
+    const ms = auction.pausedRemainingMs ?? auction.countdownDuration ?? START_TIMER_MS;
+    trx.update(auctionRef, {
+      isPaused: false,
+      pausedRemainingMs: null,
+      countdownEndsAt: Timestamp.fromMillis(Date.now() + ms),
+      countdownDuration: ms,
+      updatedAt: serverTimestamp()
+    });
+  });
 };
 
 interface FinalizeInput {
@@ -329,6 +391,8 @@ const resolveNextPlayer = (auction: Auction, queue: PlayerSlot[]) => {
         countdownDuration: null,
         activeBid: null,
         skipVotes: [],
+        isPaused: false,
+        pausedRemainingMs: null,
         updatedAt: serverTimestamp()
       }
     };
@@ -341,6 +405,8 @@ const resolveNextPlayer = (auction: Auction, queue: PlayerSlot[]) => {
       countdownDuration: START_TIMER_MS,
       activeBid: null,
       skipVotes: [],
+      isPaused: false,
+      pausedRemainingMs: null,
       updatedAt: serverTimestamp()
     }
   };
@@ -416,7 +482,7 @@ export const finalizeCurrentPlayer = async (input: FinalizeInput) => {
       };
     }
 
-    const history = [...(auction.completedPlayers ?? []), completedEntry].slice(-30);
+    const history = [...(auction.completedPlayers ?? []), completedEntry];
     const next = resolveNextPlayer(auction, queue);
 
     trx.update(auctionRef, {
