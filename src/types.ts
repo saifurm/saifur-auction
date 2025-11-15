@@ -67,6 +67,7 @@ export interface Auction {
   pausedRemainingMs?: number | null;
   manualPlayer?: ManualPlayerSlot | null;
   manualSourceId?: string | null;
+  finalizationOpen?: boolean;
   completedPlayers?: CompletedPlayerEntry[];
   results?: {
     participantId: string;

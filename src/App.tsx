@@ -26,6 +26,7 @@ import {
   finalizeResults,
   findAuctionByName,
   joinAuction,
+  openFinalizationPhase,
   markAuctionAsRanking,
   pauseAuction,
   placeBid,
@@ -125,15 +126,17 @@ const App = () => {
     const stageMap: Record<Auction["status"], ViewMode> = {
       lobby: "lobby",
       live: "auction",
-      ended: "post",
+      ended: "auction",
       ranking: "ranking",
       results: "results"
     };
+    const resolvedView =
+      auction.status === "ended" && auction.finalizationOpen ? "post" : stageMap[auction.status];
     setView((prev) => {
       if (prev === "create" || prev === "join") return prev;
-      return stageMap[auction.status];
+      return resolvedView;
     });
-  }, [auction?.status]);
+  }, [auction?.status, auction?.finalizationOpen]);
 
   useEffect(() => {
     if (!toast) return;
@@ -489,7 +492,7 @@ const CreateAuctionForm = ({
               checked={visibility === "private"}
               onChange={() => setVisibility("private")}
             />
-            Private (only password holders)
+            Private (password required)
           </label>
         </fieldset>
         <label>
@@ -672,6 +675,11 @@ const LobbyView = ({
 }) => {
   const isAdmin = selfParticipant?.role === "admin";
   const queuedPlayers = useMemo(() => buildPlayerQueue(auction.categories), [auction.categories]);
+  const [voiceConnected, setVoiceConnected] = useState(false);
+  const toggleVoice = () => {
+    setVoiceConnected((prev) => !prev);
+    notify("success", !voiceConnected ? "Joined lobby voice chat." : "Left lobby voice chat.");
+  };
   const handleStart = async () => {
     try {
       await startAuction(auction.id);
@@ -682,19 +690,19 @@ const LobbyView = ({
 
   return (
     <section className="panel-card lobby">
-        <div className="lobby-header">
-          <div className="lobby-title-row">
-            <p className="eyebrow">Lobby</p>
-            <div className="title-with-badge">
-              <h2>{auction.name}</h2>
-              <span className="join-pill">
-                <span>Joined</span>
-                <strong>
-                  {auction.participantCount}/{auction.maxParticipants}
-                </strong>
-              </span>
-            </div>
+      <div className="lobby-header">
+        <div className="lobby-title-row">
+          <p className="eyebrow">Lobby</p>
+          <div className="title-with-badge">
+            <h2>{auction.name}</h2>
+            <span className="join-pill">
+              <span>Joined</span>
+              <strong>
+                {auction.participantCount}/{auction.maxParticipants}
+              </strong>
+            </span>
           </div>
+        </div>
         <div className="share-block">
           <div className="password-row">
             <div>
@@ -720,6 +728,13 @@ const LobbyView = ({
           </div>
           {!isAdmin && <p className="muted-label">Waiting for admin to start</p>}
         </div>
+        <button
+          className={`voice-toggle icon lobby-voice-toggle ${voiceConnected ? "active" : ""}`}
+          onClick={toggleVoice}
+          aria-label={voiceConnected ? "Leave lobby voice" : "Join lobby voice"}
+        >
+          <span>{voiceConnected ? "🔊" : "🎙"}</span>
+        </button>
       </div>
       <div className="lobby-body">
         <div>
@@ -905,6 +920,20 @@ const LiveAuctionBoard = ({
     }
   };
 
+  const handleOpenFinalization = async () => {
+    if (!isAdmin || auction.finalizationOpen) return;
+    if (auction.status !== "ended") {
+      notify("error", "Finish the auction before opening final teams.");
+      return;
+    }
+    try {
+      await openFinalizationPhase(auction.id);
+      notify("success", "Final team selection opened for everyone.");
+    } catch (error) {
+      notify("error", (error as Error).message);
+    }
+  };
+
   const handleRelist = async (playerId: string) => {
     try {
       await relistUnsoldPlayer({ auctionId: auction.id, completedPlayerId: playerId });
@@ -915,6 +944,39 @@ const LiveAuctionBoard = ({
   };
 
   const myRoster = selfParticipant?.roster ?? [];
+  const myRosterWithKeys = useMemo(
+    () => myRoster.map((player, index) => ({ ...player, key: `${player.playerName}-${index}` })),
+    [myRoster]
+  );
+  const [rosterOrder, setRosterOrder] = useState<string[]>([]);
+  const [dragKey, setDragKey] = useState<string | null>(null);
+  useEffect(() => {
+    setRosterOrder(myRosterWithKeys.map((player) => player.key));
+  }, [myRosterWithKeys]);
+  const orderedRoster = rosterOrder
+    .map((key) => myRosterWithKeys.find((player) => player.key === key))
+    .filter(Boolean) as typeof myRosterWithKeys;
+  const handleDragStart = (key: string) => {
+    setDragKey(key);
+  };
+
+  const handleDragOver = (event: React.DragEvent<HTMLLIElement>) => {
+    event.preventDefault();
+  };
+
+  const handleDrop = (targetKey: string) => {
+    if (!dragKey || dragKey === targetKey) return;
+    setRosterOrder((prev) => {
+      const from = prev.indexOf(dragKey);
+      const to = prev.indexOf(targetKey);
+      if (from === -1 || to === -1) return prev;
+      const next = [...prev];
+      const [item] = next.splice(from, 1);
+      next.splice(to, 0, item);
+      return next;
+    });
+    setDragKey(null);
+  };
   const otherPlayers = participants.filter((player) => player.id !== selfParticipant?.id);
   const unsoldPlayers = useMemo(
     () => (auction.completedPlayers ?? []).filter((entry) => entry.result === "unsold"),
@@ -934,7 +996,7 @@ const LiveAuctionBoard = ({
     <section className="panel-card live-board">
       <div className="deck-card">
         <div className="deck-head">
-          <div>
+          <div className="deck-copy">
             <p className="eyebrow">On deck</p>
             <h2>{activeSlot ? activeSlot.name : "No players left"}</h2>
             {activeSlot && (
@@ -943,18 +1005,20 @@ const LiveAuctionBoard = ({
               </p>
             )}
             {isManual && <p className="muted-label">Re-auctioning an unsold player</p>}
+          </div>
+          <div className="deck-meta">
+            <button
+              className={`voice-toggle icon ${voiceConnected ? "active" : ""}`}
+              onClick={toggleVoiceChannel}
+              aria-label={voiceConnected ? "Leave voice" : "Join voice"}
+            >
+              <span>{voiceConnected ? "🔊" : "🎙"}</span>
+            </button>
             <div className="timer-display">
               <span>Time left</span>
               <strong>{timerLabel}</strong>
             </div>
           </div>
-          <button
-            className={`voice-toggle icon ${voiceConnected ? "active" : ""}`}
-            onClick={toggleVoiceChannel}
-            aria-label={voiceConnected ? "Leave voice" : "Join voice"}
-          >
-            <span>{voiceConnected ? "🔊" : "🎙"}</span>
-          </button>
         </div>
         {isAdmin && (
           <div className="admin-controls">
@@ -963,6 +1027,13 @@ const LiveAuctionBoard = ({
             </button>
             <button className="btn text" onClick={handleManualResolve}>
               Resolve player
+            </button>
+            <button
+              className="btn accent"
+              onClick={handleOpenFinalization}
+              disabled={auction.finalizationOpen || auction.status !== "ended"}
+            >
+              {auction.finalizationOpen ? "Final teams live" : "Go to final teams"}
             </button>
           </div>
         )}
@@ -1015,46 +1086,46 @@ const LiveAuctionBoard = ({
         {auction.isPaused && <p className="muted-label">Auction is paused.</p>}
       </div>
       <div className="roster-grid live-roster">
-        <div className="roster-card">
-          <h3>My bench</h3>
-          <p>
-            {selfParticipant?.name ?? "You"} - {formatCurrency(selfParticipant?.budgetRemaining ?? 0)} left -{" "}
-            {selfParticipant?.playersNeeded ?? auction.playersPerTeam} slots
-          </p>
-          <ul className="roster-list">
-            {myRoster.length === 0 && <li>No players yet.</li>}
-            {myRoster.map((player, index) => (
-              <li key={`${player.playerName}-${index}`}>
-                <span>{player.playerName}</span>
-                <span>
-                  Cat {player.categoryLabel} - {formatCurrency(player.price)}
-                </span>
+        <div className="team-card">
+          <div className="team-card__header">
+            <h3>My Team</h3>
+            <span>
+              {formatCurrency(selfParticipant?.budgetRemaining ?? 0)} left ·{" "}
+              {(selfParticipant?.playersNeeded ?? auction.playersPerTeam)} slots
+            </span>
+          </div>
+          <ul className="team-roster">
+            {orderedRoster.length === 0 && <li>No players yet.</li>}
+            {orderedRoster.map((player, index) => (
+              <li
+                key={player.key}
+                draggable
+                onDragStart={() => handleDragStart(player.key)}
+                onDragOver={handleDragOver}
+                onDrop={() => handleDrop(player.key)}
+                className={dragKey === player.key ? "dragging" : ""}
+              >
+                <span className="player-name">{player.playerName}</span>
+                <span className="player-price">{formatCurrency(player.price)}</span>
               </li>
             ))}
           </ul>
         </div>
-        <div className="roster-card">
-          <h3>Other coaches</h3>
-          <ul className="other-coaches">
+        <div className="team-card">
+          <div className="team-card__header">
+            <h3>Other Teams</h3>
+          </div>
+          <ul className="coach-summary">
             {otherPlayers.map((player) => (
               <li key={player.id}>
-                <div className="name-stack">
-                  <strong>{player.name}</strong>
-                </div>
-                <div className="pill-row">
+                <strong>{player.name}</strong>
+                <div>
                   <span>{formatCurrency(player.budgetRemaining)} left</span>
                   <span>{player.playersNeeded} slots</span>
                 </div>
-                <ul className="mini-roster">
-                  {player.roster.map((entry, idx) => (
-                    <li key={`${entry.playerName}-${idx}`}>
-                      {entry.playerName} - {formatCurrency(entry.price)}
-                    </li>
-                  ))}
-                  {player.roster.length === 0 && <li>No picks yet.</li>}
-                </ul>
               </li>
             ))}
+            {otherPlayers.length === 0 && <li>No other teams yet.</li>}
           </ul>
         </div>
       </div>
@@ -1145,17 +1216,25 @@ const TeamConfirmationPanel = ({
     });
   };
 
-  const moveSelection = (key: string, direction: -1 | 1) => {
+  const [draggingKey, setDraggingKey] = useState<string | null>(null);
+  const handleLineupDragStart = (key: string) => setDraggingKey(key);
+  const handleLineupDragOver = (event: React.DragEvent<HTMLLIElement>) => {
+    event.preventDefault();
+  };
+  const handleLineupDrop = (targetKey: string) => {
+    if (!draggingKey || draggingKey === targetKey) return;
     setSelectedKeys((prev) => {
-      const index = prev.findIndex((item) => item === key);
-      if (index === -1) return prev;
-      const targetIndex = index + direction;
-      if (targetIndex < 0 || targetIndex >= prev.length) return prev;
+      const from = prev.indexOf(draggingKey);
+      const to = prev.indexOf(targetKey);
+      if (from === -1 || to === -1) return prev;
       const next = [...prev];
-      [next[index], next[targetIndex]] = [next[targetIndex], next[index]];
+      const [item] = next.splice(from, 1);
+      next.splice(to, 0, item);
       return next;
     });
+    setDraggingKey(null);
   };
+  const handleLineupDragEnd = () => setDraggingKey(null);
 
   const handleTagChange = (key: string, value: string) => {
     setTagMap((prev) => ({ ...prev, [key]: value.slice(0, 3).toUpperCase() }));
@@ -1222,7 +1301,7 @@ const TeamConfirmationPanel = ({
               <p className="muted-label">
                 {selectedKeys.length}/{limit} selected
               </p>
-              <ul className="participant-list">
+              <ul className="participant-list lineup-options">
                 {rosterWithKeys.map((player) => {
                   const checked = selectedKeys.includes(player.key);
                   const disabled = !checked && selectedKeys.length >= limit;
@@ -1234,8 +1313,10 @@ const TeamConfirmationPanel = ({
                           checked={checked}
                           disabled={disabled}
                           onChange={() => toggleSelection(player.key)}
-                        />{" "}
-                        {player.playerName} - {formatCurrency(player.price)}
+                        />
+                        <span>
+                          {player.playerName} - {formatCurrency(player.price)}
+                        </span>
                       </label>
                     </li>
                   );
@@ -1245,21 +1326,27 @@ const TeamConfirmationPanel = ({
             <div>
               <h3>Selected lineup</h3>
               {selectedKeys.length === 0 && <p className="muted-label">Pick players to build your lineup.</p>}
-              <ol className="ranking-list">
+              <ol className="ranking-list selected-lineup">
                 {selectedKeys.map((key, index) => {
                   const player = rosterWithKeys.find((item) => item.key === key);
                   if (!player) return null;
                   return (
-                    <li key={key}>
+                    <li
+                      key={key}
+                      draggable
+                      onDragStart={() => handleLineupDragStart(key)}
+                      onDragOver={handleLineupDragOver}
+                      onDrop={() => handleLineupDrop(key)}
+                      onDragEnd={handleLineupDragEnd}
+                      className={draggingKey === key ? "dragging" : ""}
+                    >
                       <div>
                         <strong>
                           #{index + 1} {player.playerName}
                         </strong>
-                        <p>
-                          Cat {player.categoryLabel} - {formatCurrency(player.price)}
-                        </p>
+                        <p className="lineup-meta">{formatCurrency(player.price)}</p>
                       </div>
-                      <div className="rank-actions">
+                      <div className="lineup-actions">
                         <input
                           type="text"
                           maxLength={3}
@@ -1267,12 +1354,6 @@ const TeamConfirmationPanel = ({
                           onChange={(event) => handleTagChange(key, event.target.value)}
                           placeholder="TAG"
                         />
-                        <button className="btn ghost" onClick={() => moveSelection(key, -1)}>
-                          Up
-                        </button>
-                        <button className="btn ghost" onClick={() => moveSelection(key, 1)}>
-                          Down
-                        </button>
                       </div>
                     </li>
                   );
@@ -1437,7 +1518,6 @@ const ResultsBoard = ({
               <th>Rank</th>
               <th>Player</th>
               <th>Points</th>
-              <th>Roster</th>
               <th>Budget left</th>
             </tr>
           </thead>
@@ -1447,7 +1527,6 @@ const ResultsBoard = ({
                 <td>#{entry.rank}</td>
                 <td>{entry.name}</td>
                 <td>{entry.points}</td>
-                <td>{entry.rosterCount}</td>
                 <td>{formatCurrency(entry.budgetRemaining)}</td>
               </tr>
             ))}
@@ -1467,7 +1546,7 @@ const ResultsBoard = ({
                   return (
                     <li key={`${entry.playerName}-${index}`}>
                       {entry.playerName}
-                      {tag} - {formatCurrency(entry.price)} - Cat {entry.categoryLabel}
+                      {tag} - {formatCurrency(entry.price)}
                     </li>
                   );
                 })}
@@ -1511,7 +1590,7 @@ const useAdminAutomation = (
   }, [auction, isAdmin, notify]);
 
   useEffect(() => {
-    if (!auction || auction.status !== "ended" || !isAdmin) {
+    if (!auction || auction.status !== "ended" || !auction.finalizationOpen || !isAdmin) {
       rankingTriggered.current = false;
       return;
     }

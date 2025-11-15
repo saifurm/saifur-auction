@@ -112,6 +112,7 @@ export const createAuction = async (input: CreateAuctionInput) => {
     pausedRemainingMs: null,
     manualPlayer: null,
     manualSourceId: null,
+    finalizationOpen: false,
     totalPlayers,
     completedPlayers: [],
     results: []
@@ -231,6 +232,7 @@ export const startAuction = async (auctionId: string) => {
       pausedRemainingMs: null,
       manualPlayer: null,
       manualSourceId: null,
+      finalizationOpen: false,
       updatedAt: serverTimestamp()
     });
   });
@@ -405,6 +407,7 @@ const resolveNextPlayer = (auction: Auction, queue: PlayerSlot[]) => {
         skipVotes: [],
         isPaused: false,
         pausedRemainingMs: null,
+        finalizationOpen: false,
         updatedAt: serverTimestamp()
       }
     };
@@ -419,6 +422,7 @@ const resolveNextPlayer = (auction: Auction, queue: PlayerSlot[]) => {
       skipVotes: [],
       isPaused: false,
       pausedRemainingMs: null,
+      finalizationOpen: auction.finalizationOpen ?? false,
       updatedAt: serverTimestamp()
     }
   };
@@ -443,6 +447,7 @@ export const finalizeCurrentPlayer = async (input: FinalizeInput) => {
         countdownDuration: null,
         activeBid: null,
         skipVotes: [],
+        finalizationOpen: false,
         updatedAt: serverTimestamp()
       });
       return;
@@ -516,6 +521,7 @@ export const finalizeCurrentPlayer = async (input: FinalizeInput) => {
             isPaused: false,
             pausedRemainingMs: null,
             status: queueComplete ? "ended" : auction.status,
+            finalizationOpen: queueComplete ? false : auction.finalizationOpen ?? false,
             updatedAt: serverTimestamp()
           }
         }
@@ -543,6 +549,25 @@ export const submitTeam = async (input: SubmitTeamInput) => {
   await updateDoc(participantRef, {
     hasSubmittedTeam: true,
     finalRoster
+  });
+};
+
+export const openFinalizationPhase = async (auctionId: string) => {
+  const auctionRef = doc(db, "auctions", auctionId);
+  await runTransaction(db, async (trx) => {
+    const snapshot = await trx.get(auctionRef);
+    if (!snapshot.exists()) throw new Error("Auction not found.");
+    const auction = snapshot.data() as Auction;
+    if (auction.status !== "ended") {
+      throw new Error("Finish the auction before opening final teams.");
+    }
+    if (auction.finalizationOpen) {
+      return;
+    }
+    trx.update(auctionRef, {
+      finalizationOpen: true,
+      updatedAt: serverTimestamp()
+    });
   });
 };
 
@@ -686,6 +711,7 @@ export const finalizeResults = async (auctionId: string) => {
 export const markAuctionAsRanking = async (auctionId: string) => {
   await updateDoc(doc(db, "auctions", auctionId), {
     status: "ranking",
+    finalizationOpen: false,
     updatedAt: serverTimestamp()
   });
 };
