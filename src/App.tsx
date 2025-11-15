@@ -744,19 +744,21 @@ const LobbyView = ({
       </div>
       {queuedPlayers.length > 0 && (
         <div className="player-order-card lobby-players">
-          <h3>Players loaded</h3>
+          <h3>Player list</h3>
           <p className="muted-label">Review the list before the auction starts.</p>
-          <ol className="player-order-list">
+          <div className="player-table player-table-head">
+            <span>Name</span>
+            <span>Category</span>
+            <span>Base price</span>
+          </div>
+          <ol className="player-order-list table-style">
             {queuedPlayers.map((slot, index) => (
-              <li key={slot.key}>
-                <div>
-                  <strong>
-                    {index + 1}. {slot.name}
-                  </strong>
-                  <p>
-                    Cat {slot.categoryLabel} - Base {formatCurrency(slot.basePrice)}
-                  </p>
-                </div>
+              <li key={slot.key} className="player-table">
+                <strong>
+                  {index + 1}. {slot.name}
+                </strong>
+                <span>Cat {slot.categoryLabel}</span>
+                <span>{formatCurrency(slot.basePrice)}</span>
               </li>
             ))}
           </ol>

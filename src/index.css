@@ -311,9 +311,9 @@ fieldset {
 
 .info-grid {
   display: grid;
-  grid-template-columns: repeat(4, minmax(160px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
   gap: 1.25rem;
-  margin-top: 1rem;
+  margin: 1.2rem 0;
 }
 
 .info-card {
@@ -412,6 +412,28 @@ fieldset {
 
 .lobby-players {
   margin-top: 1.5rem;
+}
+
+.player-table {
+  display: grid;
+  grid-template-columns: 1fr 140px 140px;
+  align-items: center;
+  gap: 1rem;
+}
+
+.player-table-head {
+  font-size: 0.8rem;
+  letter-spacing: 0.08em;
+  color: var(--text-muted);
+  margin-bottom: 0.5rem;
+}
+
+.player-order-list.table-style li {
+  border: 1px solid var(--border-color);
+  border-radius: 12px;
+  padding: 0.75rem 1rem;
+  background: rgba(255, 255, 255, 0.02);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.03);
 }
 
 .deck-head {
