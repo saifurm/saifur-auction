@@ -395,11 +395,11 @@ const CreateAuctionForm = ({
 }) => {
   const [adminName, setAdminName] = useState("");
   const [auctionName, setAuctionName] = useState("");
-  const [maxParticipants, setMaxParticipants] = useState(6);
-  const [playersPerTeam, setPlayersPerTeam] = useState(11);
-  const [budgetPerPlayer, setBudgetPerPlayer] = useState(100);
-  const [visibility, setVisibility] = useState<"public" | "private">("private");
   const [password, setPassword] = useState("");
+  const [maxParticipantsInput, setMaxParticipantsInput] = useState("6");
+  const [playersPerTeamInput, setPlayersPerTeamInput] = useState("11");
+  const [budgetPerPlayerInput, setBudgetPerPlayerInput] = useState("100");
+  const [visibility, setVisibility] = useState<"public" | "private">("private");
   const [categories, setCategories] = useState<CategoryFormState[]>([
     {
       id: crypto.randomUUID(),
@@ -409,6 +409,13 @@ const CreateAuctionForm = ({
     }
   ]);
   const [saving, setSaving] = useState(false);
+
+  const parsePlayerInput = useCallback((value: string) => {
+    return value
+      .split(/[\n,]/)
+      .map((player) => player.trim())
+      .filter(Boolean);
+  }, []);
 
   const addCategory = () => {
     const remaining = CATEGORY_LABELS.filter(
@@ -439,6 +446,21 @@ const CreateAuctionForm = ({
       notify("error", "Set a password so friends can join safely.");
       return;
     }
+    const resolvedParticipants = Number(maxParticipantsInput);
+    if (!Number.isFinite(resolvedParticipants) || resolvedParticipants < 2 || resolvedParticipants > 20) {
+      notify("error", "Set between 2 and 20 friends for this auction.");
+      return;
+    }
+    const resolvedPlayersPerTeam = Number(playersPerTeamInput);
+    if (!Number.isFinite(resolvedPlayersPerTeam) || resolvedPlayersPerTeam < 1 || resolvedPlayersPerTeam > 20) {
+      notify("error", "Players per team must be between 1 and 20.");
+      return;
+    }
+    const resolvedBudget = Number(budgetPerPlayerInput);
+    if (!Number.isFinite(resolvedBudget) || resolvedBudget < 10) {
+      notify("error", "Budget per player should be at least $10.");
+      return;
+    }
 
     setSaving(true);
     try {
@@ -447,10 +469,7 @@ const CreateAuctionForm = ({
           id: category.id,
           label: category.label,
           basePrice: Number(category.basePrice),
-          players: category.playersText
-            .split(",")
-            .map((player) => player.trim())
-            .filter(Boolean)
+          players: parsePlayerInput(category.playersText)
         }))
         .filter((category) => category.players.length);
 
@@ -458,9 +477,9 @@ const CreateAuctionForm = ({
         auctionName: auctionName.slice(0, 20),
         adminName: adminName || "Admin",
         clientId,
-        maxParticipants,
-        playersPerTeam,
-        budgetPerPlayer,
+        maxParticipants: resolvedParticipants,
+        playersPerTeam: resolvedPlayersPerTeam,
+        budgetPerPlayer: resolvedBudget,
         visibility,
         password: password.trim(),
         categories: preparedCategories
@@ -502,13 +521,24 @@ const CreateAuctionForm = ({
           />
         </label>
         <label>
+          Password (share with friends)
+          <input
+            type="text"
+            value={password}
+            onChange={(event) => setPassword(event.target.value)}
+            placeholder="Required even for private invites"
+            required
+          />
+        </label>
+        <label>
           How many friends will play?
           <input
             type="number"
             min={2}
             max={20}
-            value={maxParticipants}
-            onChange={(event) => setMaxParticipants(Number(event.target.value))}
+            inputMode="numeric"
+            value={maxParticipantsInput}
+            onChange={(event) => setMaxParticipantsInput(event.target.value)}
             required
           />
         </label>
@@ -518,8 +548,9 @@ const CreateAuctionForm = ({
             type="number"
             min={1}
             max={20}
-            value={playersPerTeam}
-            onChange={(event) => setPlayersPerTeam(Number(event.target.value))}
+            inputMode="numeric"
+            value={playersPerTeamInput}
+            onChange={(event) => setPlayersPerTeamInput(event.target.value)}
             required
           />
         </label>
@@ -528,69 +559,73 @@ const CreateAuctionForm = ({
           <input
             type="number"
             min={10}
-            value={budgetPerPlayer}
-            onChange={(event) => setBudgetPerPlayer(Number(event.target.value))}
+            inputMode="numeric"
+            value={budgetPerPlayerInput}
+            onChange={(event) => setBudgetPerPlayerInput(event.target.value)}
             required
           />
         </label>
-        <fieldset>
-          <legend>Visibility</legend>
-          <label className="radio-pill">
-            <input
-              type="radio"
-              name="visibility"
-              value="public"
-              checked={visibility === "public"}
-              onChange={() => setVisibility("public")}
-            />
-            Public (show in lobby list)
-          </label>
-          <label className="radio-pill">
-            <input
-              type="radio"
-              name="visibility"
-              value="private"
-              checked={visibility === "private"}
-              onChange={() => setVisibility("private")}
-            />
-            Private (password required)
-          </label>
-        </fieldset>
-        <label>
-          Password (share with friends)
-          <input
-            type="text"
-            value={password}
-            onChange={(event) => setPassword(event.target.value)}
-            required
-          />
-        </label>
+        <div className="chip-select" role="group" aria-label="Visibility">
+          <span>Visibility</span>
+          <div className="chip-row">
+            <button
+              type="button"
+              className={visibility === "public" ? "chip active" : "chip"}
+              onClick={() => setVisibility("public")}
+            >
+              Public
+            </button>
+            <button
+              type="button"
+              className={visibility === "private" ? "chip active" : "chip"}
+              onClick={() => setVisibility("private")}
+            >
+              Private
+            </button>
+          </div>
+          <p className="muted-label">
+            {visibility === "public"
+              ? "Lobby listed for anyone browsing."
+              : "Hidden lobby. Share the password manually."}
+          </p>
+        </div>
         <div className="category-section">
           <h3>Categories & Players</h3>
+          <p className="muted-label">
+            Paste names separated by commas or new lines. We'll keep the first five categories (A-E).
+          </p>
           {categories.map((category) => (
             <div key={category.id} className="category-card">
               <div className="category-header">
                 <strong>Category {category.label}</strong>
-                <label>
-                  Base price (USD)
-                  <input
-                    type="number"
-                    min={1}
-                    value={category.basePrice}
-                    onChange={(event) =>
-                      updateCategory(category.id, {
-                        basePrice: Number(event.target.value)
-                      })
-                    }
-                  />
-                </label>
+                <div className="category-meta">
+                  <label>
+                    Base price (USD)
+                    <input
+                      type="number"
+                      min={1}
+                      value={category.basePrice}
+                      onChange={(event) =>
+                        updateCategory(category.id, {
+                          basePrice: Number(event.target.value)
+                        })
+                      }
+                    />
+                  </label>
+                  <span className="player-count">
+                    {parsePlayerInput(category.playersText).length} players
+                  </span>
+                </div>
               </div>
               <textarea
+                className="category-textarea"
+                rows={4}
                 value={category.playersText}
                 onChange={(event) =>
                   updateCategory(category.id, { playersText: event.target.value })
                 }
-                placeholder="Messi, Ronaldo, Neymar, Mbappe"
+                placeholder={"Messi, Ronaldo, Neymar\nMbappe, Haaland"}
+                spellCheck={false}
               />
             </div>
           ))}
