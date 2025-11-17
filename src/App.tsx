@@ -1,4 +1,4 @@
-﻿import {
+import {
   useCallback,
   useEffect,
   useMemo,
@@ -974,8 +974,21 @@ const LobbyView = ({
   );
 };
 
-const PanelVoiceButton = ({ control }: { control: VoiceButtonControl | null }) => {
+const PanelVoiceButton = ({
+  control,
+  variant = "panel"
+}: {
+  control: VoiceButtonControl | null;
+  variant?: "panel" | "inline";
+}) => {
   if (!control) return null;
+  if (variant === "inline") {
+    return (
+      <div className="inline-voice-toggle">
+        <VoiceIconButton {...control} />
+      </div>
+    );
+  }
   return (
     <div className="panel-voice-toggle">
       <VoiceIconButton {...control} />
@@ -1067,7 +1080,7 @@ const RemoteVoiceAudio = ({ stream }: { stream: MediaStream }) => {
 
 const ViewPill = ({ count }: { count?: number }) => {
   if (typeof count !== "number" || count <= 0) return null;
-  return <span className="view-pill">👀 {count} views</span>;
+  return <span className="view-pill">{count} viewers</span>;
 };
 
 const SoccerFormationBoard = ({
@@ -1135,20 +1148,37 @@ const LiveAuctionBoard = ({
   const activeSlot = auction.manualPlayer ?? queue[auction.currentPlayerIndex] ?? null;
   const isManual = Boolean(auction.manualPlayer);
   const { msRemaining } = useCountdown(auction.countdownEndsAt);
-  const [bidValue, setBidValue] = useState(() =>
-    activeSlot
-      ? Math.max(activeSlot.basePrice, (auction.activeBid?.amount ?? activeSlot.basePrice) + 1)
-      : 0
-  );
+  const minimumBid = useMemo(() => {
+    if (!activeSlot) return 0;
+    if (typeof auction.activeBid?.amount === "number") {
+      return Math.max(activeSlot.basePrice, auction.activeBid.amount + 1);
+    }
+    return activeSlot.basePrice;
+  }, [activeSlot?.key, activeSlot?.basePrice, auction.activeBid?.amount]);
+  const [bidInput, setBidInput] = useState(() => (activeSlot ? String(minimumBid) : ""));
+
+  useEffect(() => {
+    if (!activeSlot) {
+      setBidInput("");
+      return;
+    }
+    const liveAmount = auction.activeBid?.amount;
+    const nextBid =
+      typeof liveAmount === "number" ? Math.max(activeSlot.basePrice, liveAmount + 1) : activeSlot.basePrice;
+    setBidInput(String(nextBid));
+  }, [activeSlot?.key]);
 
   useEffect(() => {
     if (!activeSlot) return;
-    const nextBid = Math.max(
-      activeSlot.basePrice,
-      (auction.activeBid?.amount ?? activeSlot.basePrice) + 1
-    );
-    setBidValue(nextBid);
-  }, [activeSlot?.key, auction.activeBid?.amount, auction.activeBid?.bidderId]);
+    setBidInput((prev) => {
+      if (!prev) return prev;
+      const numeric = Number(prev);
+      if (!Number.isFinite(numeric) || numeric < minimumBid) {
+        return String(minimumBid);
+      }
+      return prev;
+    });
+  }, [minimumBid, activeSlot?.key]);
 
   const isAdmin = selfParticipant?.role === "admin";
   const highestBidderId = auction.activeBid?.bidderId;
@@ -1196,21 +1226,26 @@ const LiveAuctionBoard = ({
     [queue, auction.currentPlayerIndex, completedMap, auction.isPaused, isManual]
   );
 
-  const handleBid = async () => {
-    if (!selfParticipant || !activeSlot || auction.isPaused) {
-      return;
-    }
-    try {
-      await placeBid({
-        auctionId: auction.id,
-        clientId: selfParticipant.id,
-        bidderName: selfParticipant.name,
-        amount: Number(bidValue)
-      });
-    } catch (error) {
-      notify("error", (error as Error).message);
-    }
-  };
+    const handleBid = async () => {
+      if (!selfParticipant || !activeSlot || auction.isPaused) {
+        return;
+      }
+      try {
+        const bidAmount = Number(bidInput || "0");
+        if (!bidAmount || bidAmount < minimumBid) {
+          notify("error", `Bid at least ${formatCurrency(minimumBid)}.`);
+          return;
+        }
+        await placeBid({
+          auctionId: auction.id,
+          clientId: selfParticipant.id,
+          bidderName: selfParticipant.name,
+          amount: bidAmount
+        });
+      } catch (error) {
+        notify("error", (error as Error).message);
+      }
+    };
 
   const handlePass = async () => {
     if (!selfParticipant || !activeSlot || auction.isPaused) return;
@@ -1318,9 +1353,58 @@ const LiveAuctionBoard = ({
 
   const bidDisabled = !selfParticipant || !activeSlot || auction.isPaused || isHighestBidder;
 
+  const ledgerWithIndices = useMemo(
+    () => playerLedger.map((entry, index) => ({ ...entry, queueIndex: index })),
+    [playerLedger]
+  );
+  const finishedEntries = ledgerWithIndices.filter(
+    (entry) => entry.queueIndex < auction.currentPlayerIndex
+  );
+  const recentHistory = finishedEntries.slice(-2);
+  const olderHistory = finishedEntries.slice(
+    0,
+    Math.max(0, finishedEntries.length - recentHistory.length)
+  );
+  const upcomingStartIndex = Math.max(auction.currentPlayerIndex + (isManual ? 0 : 1), 0);
+  const upcomingEntries = ledgerWithIndices.filter(
+    (entry) => entry.queueIndex >= upcomingStartIndex
+  );
+  const currentBoardEntries: typeof ledgerWithIndices = [];
+  if (activeSlot) {
+    if (!isManual && auction.currentPlayerIndex >= 0) {
+      const currentLedgerEntry = ledgerWithIndices.find(
+        (entry) => entry.queueIndex === auction.currentPlayerIndex
+      );
+      if (currentLedgerEntry) {
+        currentBoardEntries.push(currentLedgerEntry);
+      }
+    } else {
+      currentBoardEntries.push({
+        slot: activeSlot,
+        status: auction.isPaused ? "Paused" : "Live now",
+        tone: auction.isPaused ? "paused" : "live",
+        queueIndex: -1
+      });
+    }
+  }
+  const boardSections: Array<
+    | { kind: "label"; text: string }
+    | { kind: "entry"; entry: (typeof ledgerWithIndices)[number] }
+  > = [];
+  const appendSection = (label: string, entries: typeof ledgerWithIndices) => {
+    if (!entries.length) return;
+    boardSections.push({ kind: "label", text: label });
+    entries.forEach((entry) => boardSections.push({ kind: "entry", entry }));
+  };
+  appendSection("Recent picks", recentHistory);
+  appendSection("Now drafting", currentBoardEntries);
+  appendSection("Upcoming", upcomingEntries);
+  appendSection("Earlier picks", olderHistory);
+
+  const playersPurchased = orderedRoster.length;
+
   return (
     <section className="panel-card live-board">
-      <PanelVoiceButton control={voiceControl} />
       <div className="deck-card">
         <div className="deck-head">
           <div className="deck-copy">
@@ -1333,12 +1417,11 @@ const LiveAuctionBoard = ({
             )}
             {isManual && <p className="muted-label">Re-auctioning an unsold player</p>}
           </div>
-          <div className="deck-meta">
-            <div className="timer-display">
-              <span>Time left</span>
-              <strong>{timerLabel}</strong>
-            </div>
-          </div>
+          <PanelVoiceButton control={voiceControl} variant="inline" />
+        </div>
+        <div className="timer-display deck-timer">
+          <span>Time left</span>
+          <strong>{timerLabel}</strong>
         </div>
         {isAdmin && (
           <div className="admin-controls">
@@ -1346,7 +1429,7 @@ const LiveAuctionBoard = ({
               {auction.isPaused ? "Resume auction" : "Pause auction"}
             </button>
             <button className="btn text" onClick={handleManualResolve}>
-              Resolve player
+              Next player
             </button>
             <button
               className="btn accent"
@@ -1371,11 +1454,15 @@ const LiveAuctionBoard = ({
         </div>
         <div className="bid-inputs">
           <input
-            type="number"
-            min={activeSlot?.basePrice ?? 0}
-            value={activeSlot ? bidValue : 0}
+            type="text"
+            inputMode="numeric"
+            pattern="[0-9]*"
+            placeholder={activeSlot ? String(activeSlot.basePrice) : ""}
+            value={activeSlot ? bidInput : ""}
             disabled={bidDisabled}
-            onChange={(event) => setBidValue(Number(event.target.value))}
+            onChange={(event) =>
+              setBidInput(event.target.value.replace(/[^0-9]/g, "").replace(/^0+(?=\d)/, ""))
+            }
           />
           <button className="btn accent" disabled={bidDisabled} onClick={handleBid}>
             Place bid
@@ -1383,7 +1470,14 @@ const LiveAuctionBoard = ({
           <button
             className="btn ghost"
             disabled={bidDisabled}
-            onClick={() => setBidValue((value) => value + 1)}
+            onClick={() =>
+              setBidInput((value) => {
+                const parsed = Number(value);
+                const fallback = minimumBid || activeSlot?.basePrice || 0;
+                const next = Number.isFinite(parsed) && parsed > 0 ? parsed + 1 : fallback + 1;
+                return String(next);
+              })
+            }
           >
             +1
           </button>
@@ -1410,8 +1504,8 @@ const LiveAuctionBoard = ({
           <div className="team-card__header">
             <h3>My Team</h3>
             <span>
-              {formatCurrency(selfParticipant?.budgetRemaining ?? 0)} left ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â·{" "}
-              {(selfParticipant?.playersNeeded ?? auction.playersPerTeam)} slots
+              {formatCurrency(selfParticipant?.budgetRemaining ?? 0)} left, {playersPurchased}{" "}
+              {playersPurchased === 1 ? "player" : "players"} purchased
             </span>
           </div>
           <ul className="team-roster">
@@ -1449,23 +1543,65 @@ const LiveAuctionBoard = ({
           </ul>
         </div>
       </div>
-      <div className="player-order-card">
-        <h3>Full player list</h3>
-        <p className="muted-label">Check categories before the auction begins.</p>
-        <ol className="player-order-list">
-          {playerLedger.map((entry, index) => (
-            <li key={entry.slot.key} className={entry.tone}>
-              <div>
-                <strong>
-                  {index + 1}. {entry.slot.name}
-                </strong>
-                <p>
-                  Cat {entry.slot.categoryLabel} - Base {formatCurrency(entry.slot.basePrice)}
-                </p>
+      <div className="player-order-card draft-board">
+        <div className="draft-header">
+          <h3>Full player list</h3>
+          <div className="draft-meta">
+            <div className="present-chip">
+              <span>Present auction</span>
+              {activeSlot ? (
+                <>
+                  <strong>{activeSlot.name}</strong>
+                  <p>
+                    Cat {activeSlot.categoryLabel} · Base {formatCurrency(activeSlot.basePrice)}
+                  </p>
+                </>
+              ) : (
+                <strong>No player live</strong>
+              )}
+            </div>
+            {recentHistory.length > 0 && (
+              <div className="recent-chip">
+                <span>Just drafted</span>
+                <ul>
+                  {[...recentHistory].reverse().map((entry) => (
+                    <li key={`${entry.slot.key}-${entry.queueIndex}`}>
+                      <strong>{entry.slot.name}</strong>
+                      <p>{entry.status}</p>
+                    </li>
+                  ))}
+                </ul>
               </div>
-              <span>{entry.status}</span>
-            </li>
-          ))}
+            )}
+          </div>
+        </div>
+        <ol className="player-order-list">
+          {boardSections.length === 0 && <li className="ledger-label">No players queued.</li>}
+          {boardSections.map((item, idx) =>
+            item.kind === "label" ? (
+              <li key={`label-${idx}`} className="ledger-label">
+                {item.text}
+              </li>
+            ) : (
+              <li
+                key={`${item.entry.slot.key}-${item.entry.queueIndex}`}
+                className={`player-table ${item.entry.tone ?? ""}`}
+              >
+                <div>
+                  <strong>
+                    {item.entry.queueIndex != null && item.entry.queueIndex >= 0
+                      ? `${item.entry.queueIndex + 1}. `
+                      : ""}
+                    {item.entry.slot.name}
+                  </strong>
+                  <p>
+                    Cat {item.entry.slot.categoryLabel} - Base {formatCurrency(item.entry.slot.basePrice)}
+                  </p>
+                </div>
+                <span>{item.entry.status}</span>
+              </li>
+            )
+          )}
         </ol>
       </div>
       {isAdmin && unsoldPlayers.length > 0 && (
@@ -2204,4 +2340,5 @@ const useAdminAutomation = (
 };
 
 export default App;
+
 

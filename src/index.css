@@ -856,6 +856,74 @@ fieldset {
   background: rgba(255, 255, 255, 0.02);
 }
 
+.deck-card {
+  position: relative;
+  padding-bottom: 3.5rem;
+}
+
+.draft-board {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.draft-header {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 1rem;
+  align-items: stretch;
+}
+
+.draft-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+}
+
+.present-chip,
+.recent-chip {
+  border: 1px solid var(--border-color);
+  border-radius: 16px;
+  padding: 0.85rem 1rem;
+  background: rgba(255, 255, 255, 0.02);
+  min-width: 220px;
+}
+
+.present-chip span,
+.recent-chip span {
+  text-transform: uppercase;
+  font-size: 0.7rem;
+  letter-spacing: 0.08em;
+  color: var(--text-muted);
+}
+
+.present-chip strong {
+  display: block;
+  margin-top: 0.35rem;
+  font-size: 1.05rem;
+}
+
+.present-chip p,
+.recent-chip p {
+  margin: 0.2rem 0 0;
+  color: var(--text-muted);
+  font-size: 0.85rem;
+}
+
+.recent-chip ul {
+  list-style: none;
+  margin: 0.35rem 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.recent-chip li strong {
+  display: block;
+}
+
 .lobby-players {
   margin-top: 1.5rem;
 }
@@ -904,17 +972,17 @@ fieldset {
 }
 
 .deck-head {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
+  display: flex;
+  justify-content: space-between;
   gap: 1rem;
   align-items: flex-start;
 }
 
-.deck-meta {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-end;
-  gap: 0.75rem;
+.deck-timer {
+  position: absolute;
+  right: 1.25rem;
+  bottom: 1rem;
+  text-align: right;
 }
 
 .panel-voice-toggle {
@@ -922,6 +990,10 @@ fieldset {
   top: 1.25rem;
   right: 1.25rem;
   z-index: 10;
+}
+
+.inline-voice-toggle {
+  display: inline-flex;
 }
 
 .voice-icon-btn {
@@ -1156,6 +1228,23 @@ fieldset {
   border-radius: 16px;
   padding: 0.85rem 1rem;
   gap: 1rem;
+}
+
+.player-order-list li.player-table {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: center;
+  gap: 1rem;
+}
+
+.player-order-list .ledger-label {
+  border: none;
+  padding: 0;
+  margin-top: 0.35rem;
+  font-size: 0.7rem;
+  letter-spacing: 0.08em;
+  color: var(--text-muted);
+  text-transform: uppercase;
 }
 
 .player-order-list li.live {
