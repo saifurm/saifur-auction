@@ -641,9 +641,12 @@ fieldset {
 }
 
 .pitch-line.center-line {
-  left: 50%;
-  top: 0;
-  bottom: 0;
+  top: 50%;
+  left: 0;
+  right: 0;
+  height: 0;
+  border: none;
+  border-top: 1.5px solid rgba(255, 255, 255, 0.45);
 }
 
 .pitch-line.center-circle {
@@ -656,74 +659,19 @@ fieldset {
 }
 
 .pitch-line.penalty-box {
-  width: 160px;
-  height: 140px;
+  width: 260px;
+  height: 110px;
   left: 50%;
-  margin-left: -80px;
-  border-radius: 12px;
+  margin-left: -130px;
+  border-radius: 14px;
 }
 
 .pitch-line.penalty-box.top {
-  top: 14px;
+  top: 18px;
 }
 
 .pitch-line.penalty-box.bottom {
-  bottom: 14px;
-}
-
-.pitch-line.goal-box {
-  width: 80px;
-  height: 60px;
-  left: 50%;
-  margin-left: -40px;
-  border-radius: 6px;
-}
-
-.pitch-line.goal-box.top {
-  top: 20px;
-}
-
-.pitch-line.goal-box.bottom {
-  bottom: 20px;
-}
-
-.pitch-line.goal {
-  width: 40px;
-  height: 12px;
-  left: 50%;
-  margin-left: -20px;
-  border-radius: 4px;
-}
-
-.pitch-line.goal-box,
-.pitch-line.goal {
-  border: 1.5px solid rgba(255, 255, 255, 0.35);
-}
-
-.pitch-line.goal.top {
-  top: 6px;
-}
-
-.pitch-line.goal.bottom {
-  bottom: 6px;
-}
-
-.pitch-line.penalty-arc {
-  width: 120px;
-  height: 60px;
-  left: 50%;
-  margin-left: -60px;
-  border-radius: 0 0 120px 120px;
-  border-top: none;
-}
-
-.pitch-line.penalty-arc.top {
-  top: 160px;
-}
-
-.pitch-line.penalty-arc.bottom {
-  bottom: 160px;
-  transform: scaleY(-1);
+  bottom: 18px;
 }
 
 .soccer-pitch.compact {

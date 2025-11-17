@@ -1093,12 +1093,6 @@ const SoccerFormationBoard = ({
         <span className="pitch-line center-circle" />
         <span className="pitch-line penalty-box top" />
         <span className="pitch-line penalty-box bottom" />
-        <span className="pitch-line goal-box top" />
-        <span className="pitch-line goal-box bottom" />
-        <span className="pitch-line goal top" />
-        <span className="pitch-line goal bottom" />
-        <span className="pitch-line penalty-arc top" />
-        <span className="pitch-line penalty-arc bottom" />
       </div>
       {formation.slots.map((slot) => {
         const player = playerBySlot.get(slot.id);
