@@ -708,6 +708,10 @@ fieldset {
   font-size: 0.9rem;
 }
 
+.results-rosters .soccer-pitch {
+  margin: 0 auto;
+}
+
 .lobby-header {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
@@ -1012,8 +1016,14 @@ fieldset {
 }
 
 .results-rosters {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+.results-rosters .roster-card {
+  display: flex;
+  flex-direction: column;
   gap: 1rem;
 }
 
