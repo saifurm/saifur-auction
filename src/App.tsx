@@ -633,14 +633,17 @@ const CreateAuctionForm = ({
         </div>
         <div className="category-section">
           <h3>Categories & Players</h3>
-          <p className="muted-label">
-            Paste names separated by commas or new lines. We'll keep the first five categories (A-E).
-          </p>
+          <p className="muted-label">Paste names separated by commas or new lines.</p>
           <div className="category-grid">
             {categories.map((category) => (
               <div key={category.id} className="category-card">
                 <div className="category-header">
-                  <span className="category-pill">{category.label}</span>
+                  <div className="category-title">
+                    <span className="category-pill">{category.label}</span>
+                    <span className="player-count">
+                      {parsePlayerInput(category.playersText).length} players
+                    </span>
+                  </div>
                   <div className="category-meta">
                     <label>
                       Base price (USD)
@@ -655,9 +658,6 @@ const CreateAuctionForm = ({
                         }
                       />
                     </label>
-                    <span className="player-count">
-                      {parsePlayerInput(category.playersText).length} players
-                    </span>
                   </div>
                 </div>
                 <textarea

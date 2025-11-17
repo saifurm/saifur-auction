@@ -283,6 +283,12 @@ fieldset {
   flex-wrap: wrap;
 }
 
+.category-title {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
 .category-pill {
   display: inline-flex;
   width: 36px;
