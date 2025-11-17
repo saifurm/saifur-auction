@@ -991,11 +991,11 @@ const VoiceIconButton = ({
   stageLabel,
   mode
 }: VoiceButtonControl) => {
-  const icon = connecting ? "…" : mode === "listen" ? (connected ? "🎧" : "👂") : connected ? "🔊" : "🎙";
+  const muted = mode === "talk" && !connected;
   const label =
     mode === "talk"
       ? connected
-        ? "Leave voice chat"
+        ? "Mute voice chat"
         : "Join voice chat"
       : connected
         ? "Stop listening"
@@ -1003,7 +1003,7 @@ const VoiceIconButton = ({
   const title =
     mode === "talk"
       ? connected
-        ? `Live mic in ${stageLabel}`
+        ? `Speaking to ${stageLabel}`
         : `Tap to speak in ${stageLabel}`
       : connected
         ? `Listening to ${stageLabel}`
@@ -1011,17 +1011,37 @@ const VoiceIconButton = ({
   return (
     <button
       type="button"
-      className={`voice-icon-btn ${mode} ${connected ? "active" : ""}`}
+      className={`voice-icon-btn ${mode} ${connected ? "active" : ""} ${muted ? "muted" : ""}`}
       onClick={toggle}
       disabled={!canToggle || connecting}
       aria-busy={connecting}
       aria-label={label}
       title={title}
     >
-      <span>{icon}</span>
+      <MicIcon crossed={muted} />
     </button>
   );
 };
+
+const MicIcon = ({ crossed }: { crossed?: boolean }) => (
+  <span className={`mic-shell ${crossed ? "muted" : ""}`}>
+    <svg className="mic-icon" viewBox="0 0 24 24" aria-hidden="true">
+      <path
+        d="M15 10V6a3 3 0 0 0-6 0v4a3 3 0 0 0 6 0Z"
+        fill="currentColor"
+      />
+      <path
+        d="M7 10a5 5 0 0 0 10 0M12 15v4M8 19h8"
+        stroke="currentColor"
+        strokeWidth="1.4"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        fill="none"
+      />
+    </svg>
+    {crossed && <span className="mic-slash" />}
+  </span>
+);
 
 const VoiceAudioLayer = ({ streams }: { streams: VoiceStream[] }) => {
   if (!streams.length) {
@@ -1068,6 +1088,18 @@ const SoccerFormationBoard = ({
   );
   return (
     <div className={`soccer-pitch ${compact ? "compact" : ""}`}>
+      <div className="pitch-lines">
+        <span className="pitch-line center" />
+        <span className="pitch-line circle" />
+        <span className="pitch-line box box-top left" />
+        <span className="pitch-line box box-top right" />
+        <span className="pitch-line box box-bottom left" />
+        <span className="pitch-line box box-bottom right" />
+        <span className="pitch-line six six-top left" />
+        <span className="pitch-line six six-top right" />
+        <span className="pitch-line six six-bottom left" />
+        <span className="pitch-line six six-bottom right" />
+      </div>
       {formation.slots.map((slot) => {
         const player = playerBySlot.get(slot.id);
         return (
@@ -1973,23 +2005,22 @@ const RankingPanel = ({
                 <strong>
                   #{index + 1} {target.name}
                 </strong>
-                {showFormation && target.finalRoster && target.finalRosterFormation && (
+                {showFormation && target.finalRoster && target.finalRosterFormation ? (
                   <div className="ranking-formation">
                     <SoccerFormationBoard
                       formationCode={target.finalRosterFormation.code}
                       players={target.finalRoster}
-                      compact
                     />
                   </div>
+                ) : (
+                  <ul className="price-list">
+                    {lineup.map((player, idx) => (
+                      <li key={`${player.playerName}-${idx}`}>
+                        {player.playerName} - {formatCurrency(player.price)}
+                      </li>
+                    ))}
+                  </ul>
                 )}
-                <ul className="price-list">
-                  {lineup.map((player, idx) => (
-                    <li key={`${player.playerName}-${idx}`}>
-                      {player.playerName} - {formatCurrency(player.price)}{" "}
-                      {"tag" in player && player.tag === "WK" ? "(WK)" : ""}
-                    </li>
-                  ))}
-                </ul>
               </div>
               <div className="rank-actions">
                 <button className="btn ghost" onClick={() => move(index, -1)}>
@@ -2079,20 +2110,22 @@ const ResultsBoard = ({
           return (
             <div key={player.id} className="roster-card">
               <h4>{player.name}</h4>
-              {showFormation && player.finalRoster && player.finalRosterFormation && (
-                <SoccerFormationBoard
-                  formationCode={player.finalRosterFormation.code}
-                  players={player.finalRoster}
-                />
-              )}
-              <ul className="price-list">
-                {lineup.map((entry, index) => (
-                  <li key={`${entry.playerName}-${index}`}>
-                    {entry.playerName} - {formatCurrency(entry.price)}{" "}
-                    {"tag" in entry && entry.tag === "WK" ? "(WK)" : ""}
-                  </li>
-                ))}
-              </ul>
+              <div className={`roster-body ${showFormation ? "with-board" : ""}`}>
+                {showFormation && player.finalRoster && player.finalRosterFormation && (
+                  <SoccerFormationBoard
+                    formationCode={player.finalRosterFormation.code}
+                    players={player.finalRoster}
+                  />
+                )}
+                <ul className="price-list">
+                  {lineup.map((entry, index) => (
+                    <li key={`${entry.playerName}-${index}`}>
+                      {entry.playerName} - {formatCurrency(entry.price)}{" "}
+                      {"tag" in entry && entry.tag === "WK" ? "(WK)" : ""}
+                    </li>
+                  ))}
+                </ul>
+              </div>
             </div>
           );
         })}
