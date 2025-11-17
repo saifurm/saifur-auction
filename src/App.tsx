@@ -1089,16 +1089,16 @@ const SoccerFormationBoard = ({
   return (
     <div className={`soccer-pitch ${compact ? "compact" : ""}`}>
       <div className="pitch-lines">
-        <span className="pitch-line center" />
-        <span className="pitch-line circle" />
-        <span className="pitch-line box box-top left" />
-        <span className="pitch-line box box-top right" />
-        <span className="pitch-line box box-bottom left" />
-        <span className="pitch-line box box-bottom right" />
-        <span className="pitch-line six six-top left" />
-        <span className="pitch-line six six-top right" />
-        <span className="pitch-line six six-bottom left" />
-        <span className="pitch-line six six-bottom right" />
+        <span className="pitch-line center-line" />
+        <span className="pitch-line center-circle" />
+        <span className="pitch-line penalty-box top" />
+        <span className="pitch-line penalty-box bottom" />
+        <span className="pitch-line goal-box top" />
+        <span className="pitch-line goal-box bottom" />
+        <span className="pitch-line goal top" />
+        <span className="pitch-line goal bottom" />
+        <span className="pitch-line penalty-arc top" />
+        <span className="pitch-line penalty-arc bottom" />
       </div>
       {formation.slots.map((slot) => {
         const player = playerBySlot.get(slot.id);

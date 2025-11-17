@@ -613,11 +613,20 @@ fieldset {
   position: relative;
   width: min(520px, 100%);
   aspect-ratio: 2 / 3;
-  border-radius: 18px;
+  border-radius: 20px;
   border: 1px solid rgba(255, 255, 255, 0.15);
-  background: linear-gradient(180deg, #1d6d2a 0%, #0a2a11 100%);
+  background:
+    repeating-linear-gradient(
+      90deg,
+      rgba(255, 255, 255, 0.04) 0,
+      rgba(255, 255, 255, 0.04) 6%,
+      transparent 6%,
+      transparent 12%
+    ),
+    linear-gradient(180deg, #1c7126 0%, #0b2b12 100%);
   box-shadow: inset 0 0 0 2px rgba(255, 255, 255, 0.05);
   margin: 0 auto;
+  overflow: hidden;
 }
 
 .pitch-lines {
@@ -628,16 +637,16 @@ fieldset {
 
 .pitch-line {
   position: absolute;
-  border: 1px solid rgba(255, 255, 255, 0.25);
+  border: 1.5px solid rgba(255, 255, 255, 0.35);
 }
 
-.pitch-line.center {
+.pitch-line.center-line {
   left: 50%;
   top: 0;
   bottom: 0;
 }
 
-.pitch-line.circle {
+.pitch-line.center-circle {
   width: 120px;
   height: 120px;
   top: 50%;
@@ -646,48 +655,75 @@ fieldset {
   border-radius: 50%;
 }
 
-.pitch-line.box {
-  width: 90px;
+.pitch-line.penalty-box {
+  width: 160px;
   height: 140px;
-  border-radius: 8px;
+  left: 50%;
+  margin-left: -80px;
+  border-radius: 12px;
 }
 
-.pitch-line.box.box-top {
-  top: 5%;
+.pitch-line.penalty-box.top {
+  top: 14px;
 }
 
-.pitch-line.box.box-bottom {
-  bottom: 5%;
+.pitch-line.penalty-box.bottom {
+  bottom: 14px;
 }
 
-.pitch-line.box.left {
-  left: 3%;
-}
-
-.pitch-line.box.right {
-  right: 3%;
-}
-
-.pitch-line.six {
-  width: 40px;
-  height: 80px;
+.pitch-line.goal-box {
+  width: 80px;
+  height: 60px;
+  left: 50%;
+  margin-left: -40px;
   border-radius: 6px;
 }
 
-.pitch-line.six.six-top {
-  top: 10%;
+.pitch-line.goal-box.top {
+  top: 20px;
 }
 
-.pitch-line.six.six-bottom {
-  bottom: 10%;
+.pitch-line.goal-box.bottom {
+  bottom: 20px;
 }
 
-.pitch-line.six.left {
-  left: 5%;
+.pitch-line.goal {
+  width: 40px;
+  height: 12px;
+  left: 50%;
+  margin-left: -20px;
+  border-radius: 4px;
 }
 
-.pitch-line.six.right {
-  right: 5%;
+.pitch-line.goal-box,
+.pitch-line.goal {
+  border: 1.5px solid rgba(255, 255, 255, 0.35);
+}
+
+.pitch-line.goal.top {
+  top: 6px;
+}
+
+.pitch-line.goal.bottom {
+  bottom: 6px;
+}
+
+.pitch-line.penalty-arc {
+  width: 120px;
+  height: 60px;
+  left: 50%;
+  margin-left: -60px;
+  border-radius: 0 0 120px 120px;
+  border-top: none;
+}
+
+.pitch-line.penalty-arc.top {
+  top: 160px;
+}
+
+.pitch-line.penalty-arc.bottom {
+  bottom: 160px;
+  transform: scaleY(-1);
 }
 
 .soccer-pitch.compact {

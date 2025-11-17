@@ -18,15 +18,15 @@ export const SOCCER_FORMATIONS: SoccerFormation[] = [
     slots: [
       { id: "GK", label: "GK", x: 50, y: 94 },
       { id: "LB", label: "LB", x: 18, y: 82 },
-      { id: "LCB", label: "LCB", x: 38, y: 80 },
-      { id: "RCB", label: "RCB", x: 62, y: 80 },
+      { id: "LCB", label: "LCB", x: 38, y: 78 },
+      { id: "RCB", label: "RCB", x: 62, y: 78 },
       { id: "RB", label: "RB", x: 82, y: 82 },
-      { id: "LCM", label: "LCM", x: 34, y: 62 },
-      { id: "CAM", label: "CAM", x: 50, y: 48 },
-      { id: "RCM", label: "RCM", x: 66, y: 62 },
-      { id: "LW", label: "LW", x: 18, y: 32 },
-      { id: "ST", label: "ST", x: 50, y: 18 },
-      { id: "RW", label: "RW", x: 82, y: 32 }
+      { id: "LCM", label: "LCM", x: 36, y: 54 },
+      { id: "CAM", label: "CAM", x: 50, y: 40 },
+      { id: "RCM", label: "RCM", x: 64, y: 54 },
+      { id: "LW", label: "LW", x: 18, y: 24 },
+      { id: "ST", label: "ST", x: 50, y: 12 },
+      { id: "RW", label: "RW", x: 82, y: 24 }
     ]
   },
   {
@@ -35,15 +35,15 @@ export const SOCCER_FORMATIONS: SoccerFormation[] = [
     slots: [
       { id: "GK", label: "GK", x: 50, y: 94 },
       { id: "LB", label: "LB", x: 18, y: 82 },
-      { id: "LCB", label: "LCB", x: 38, y: 80 },
-      { id: "RCB", label: "RCB", x: 62, y: 80 },
+      { id: "LCB", label: "LCB", x: 38, y: 78 },
+      { id: "RCB", label: "RCB", x: 62, y: 78 },
       { id: "RB", label: "RB", x: 82, y: 82 },
-      { id: "LCM", label: "LCM", x: 34, y: 58 },
-      { id: "CDM", label: "CDM", x: 50, y: 68 },
-      { id: "RCM", label: "RCM", x: 66, y: 58 },
-      { id: "LW", label: "LW", x: 18, y: 32 },
-      { id: "ST", label: "ST", x: 50, y: 18 },
-      { id: "RW", label: "RW", x: 82, y: 32 }
+      { id: "LCM", label: "LCM", x: 36, y: 50 },
+      { id: "CDM", label: "CDM", x: 50, y: 62 },
+      { id: "RCM", label: "RCM", x: 64, y: 50 },
+      { id: "LW", label: "LW", x: 18, y: 24 },
+      { id: "ST", label: "ST", x: 50, y: 12 },
+      { id: "RW", label: "RW", x: 82, y: 24 }
     ]
   },
   {
@@ -52,15 +52,15 @@ export const SOCCER_FORMATIONS: SoccerFormation[] = [
     slots: [
       { id: "GK", label: "GK", x: 50, y: 94 },
       { id: "LB", label: "LB", x: 18, y: 82 },
-      { id: "LCB", label: "LCB", x: 38, y: 80 },
-      { id: "RCB", label: "RCB", x: 62, y: 80 },
+      { id: "LCB", label: "LCB", x: 38, y: 78 },
+      { id: "RCB", label: "RCB", x: 62, y: 78 },
       { id: "RB", label: "RB", x: 82, y: 82 },
-      { id: "LM", label: "LM", x: 18, y: 42 },
-      { id: "LCM", label: "LCM", x: 40, y: 58 },
-      { id: "RCM", label: "RCM", x: 60, y: 58 },
-      { id: "RM", label: "RM", x: 82, y: 42 },
-      { id: "STL", label: "ST", x: 42, y: 20 },
-      { id: "STR", label: "CF", x: 58, y: 20 }
+      { id: "LM", label: "LM", x: 18, y: 34 },
+      { id: "LCM", label: "LCM", x: 40, y: 54 },
+      { id: "RCM", label: "RCM", x: 60, y: 54 },
+      { id: "RM", label: "RM", x: 82, y: 34 },
+      { id: "STL", label: "ST", x: 44, y: 14 },
+      { id: "STR", label: "CF", x: 56, y: 14 }
     ]
   },
   {
@@ -69,15 +69,15 @@ export const SOCCER_FORMATIONS: SoccerFormation[] = [
     slots: [
       { id: "GK", label: "GK", x: 50, y: 94 },
       { id: "LB", label: "LB", x: 18, y: 82 },
-      { id: "LCB", label: "LCB", x: 38, y: 80 },
-      { id: "RCB", label: "RCB", x: 62, y: 80 },
+      { id: "LCB", label: "LCB", x: 38, y: 78 },
+      { id: "RCB", label: "RCB", x: 62, y: 78 },
       { id: "RB", label: "RB", x: 82, y: 82 },
-      { id: "LCDM", label: "CDM", x: 40, y: 64 },
-      { id: "RCDM", label: "CDM", x: 60, y: 64 },
-      { id: "LW", label: "LW", x: 18, y: 34 },
-      { id: "CAM", label: "CAM", x: 50, y: 46 },
-      { id: "RW", label: "RW", x: 82, y: 34 },
-      { id: "ST", label: "ST", x: 50, y: 18 }
+      { id: "LCDM", label: "CDM", x: 40, y: 58 },
+      { id: "RCDM", label: "CDM", x: 60, y: 58 },
+      { id: "LW", label: "LW", x: 18, y: 24 },
+      { id: "CAM", label: "CAM", x: 50, y: 36 },
+      { id: "RW", label: "RW", x: 82, y: 24 },
+      { id: "ST", label: "ST", x: 50, y: 12 }
     ]
   },
   {
@@ -85,16 +85,16 @@ export const SOCCER_FORMATIONS: SoccerFormation[] = [
     label: "3-4-3",
     slots: [
       { id: "GK", label: "GK", x: 50, y: 94 },
-      { id: "LCB", label: "LCB", x: 32, y: 80 },
-      { id: "CB", label: "CB", x: 50, y: 78 },
-      { id: "RCB", label: "RCB", x: 68, y: 80 },
-      { id: "LWB", label: "LWB", x: 20, y: 58 },
-      { id: "LCM", label: "CM", x: 40, y: 58 },
-      { id: "RCM", label: "CM", x: 60, y: 58 },
-      { id: "RWB", label: "RWB", x: 80, y: 58 },
-      { id: "LW", label: "LW", x: 18, y: 32 },
-      { id: "CF", label: "CF", x: 50, y: 18 },
-      { id: "RW", label: "RW", x: 82, y: 32 }
+      { id: "LCB", label: "LCB", x: 34, y: 78 },
+      { id: "CB", label: "CB", x: 50, y: 76 },
+      { id: "RCB", label: "RCB", x: 66, y: 78 },
+      { id: "LWB", label: "LWB", x: 18, y: 46 },
+      { id: "LCM", label: "CM", x: 40, y: 54 },
+      { id: "RCM", label: "CM", x: 60, y: 54 },
+      { id: "RWB", label: "RWB", x: 82, y: 46 },
+      { id: "LW", label: "LW", x: 18, y: 24 },
+      { id: "CF", label: "CF", x: 50, y: 12 },
+      { id: "RW", label: "RW", x: 82, y: 24 }
     ]
   }
 ];
