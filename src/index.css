@@ -173,6 +173,7 @@ body {
   padding: clamp(1.5rem, 5vw, 2.75rem);
   border: 1px solid var(--border-color);
   box-shadow: 0 40px 120px rgba(0, 0, 0, 0.45);
+  position: relative;
 }
 
 .landing-card h2 {
@@ -503,8 +504,9 @@ fieldset {
   padding: 0.5rem 0.75rem;
   border-radius: 8px;
   border: 1px solid var(--border-color);
-  background: transparent;
+  background: rgba(0, 0, 0, 0.65);
   color: #f4f4f5;
+  appearance: none;
 }
 
 .soccer-layout {
@@ -538,7 +540,54 @@ fieldset {
   padding: 0.4rem 0.6rem;
   border-radius: 8px;
   border: 1px solid var(--border-color);
-  background: rgba(255, 255, 255, 0.02);
+  background: rgba(0, 0, 0, 0.65);
+  color: #f4f4f5;
+  appearance: none;
+}
+
+.soccer-builder select option {
+  background: #050505;
+  color: #f4f4f5;
+}
+
+.cricket-builder {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1.25rem;
+}
+
+.cricket-slot-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 0.35rem;
+}
+
+.wk-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  border: 1px solid var(--border-color);
+  border-radius: 999px;
+  padding: 0.1rem 0.6rem;
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  cursor: pointer;
+  color: var(--text-muted);
+}
+
+.wk-toggle input {
+  margin: 0;
+}
+
+.wk-toggle.active {
+  background: rgba(165, 29, 49, 0.2);
+  border-color: var(--accent);
+  color: #fff;
+}
+
+.soccer-builder select option {
+  background: #050505;
   color: #f4f4f5;
 }
 
@@ -567,8 +616,31 @@ fieldset {
   aspect-ratio: 3 / 4;
   border-radius: 18px;
   border: 1px solid rgba(255, 255, 255, 0.15);
-  background: radial-gradient(circle at 50% 20%, #2e7d32, #0c2a11);
+  background: linear-gradient(180deg, #1d6d2a 0%, #0a2a11 100%);
   box-shadow: inset 0 0 0 2px rgba(255, 255, 255, 0.05);
+}
+
+.soccer-pitch::before {
+  content: "";
+  position: absolute;
+  top: 35%;
+  bottom: 35%;
+  left: 0;
+  right: 0;
+  border-top: 1px solid rgba(255, 255, 255, 0.2);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+.soccer-pitch::after {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 120px;
+  height: 120px;
+  margin: -60px 0 0 -60px;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 50%;
 }
 
 .soccer-pitch.compact {
@@ -580,13 +652,16 @@ fieldset {
   position: absolute;
   transform: translate(-50%, -50%);
   text-align: center;
-  background: rgba(0, 0, 0, 0.4);
-  border-radius: 12px;
-  padding: 0.25rem 0.35rem;
-  min-width: 64px;
+  background: rgba(0, 0, 0, 0.6);
+  border-radius: 14px;
+  padding: 0.35rem 0.6rem;
+  min-width: 90px;
+  max-width: 140px;
   color: #f4f4f5;
   font-size: 0.7rem;
   border: 1px solid rgba(255, 255, 255, 0.1);
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.4);
+  white-space: nowrap;
 }
 
 .soccer-slot.filled {
@@ -605,7 +680,10 @@ fieldset {
 .soccer-slot strong {
   display: block;
   margin-top: 0.15rem;
-  font-size: 0.75rem;
+  font-size: 0.8rem;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  overflow: hidden;
 }
 
 .ranking-formation {
@@ -618,6 +696,16 @@ fieldset {
 
 .muted-label.warning {
   color: #f7d154;
+}
+
+.price-list {
+  list-style: none;
+  margin: 0.75rem 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  font-size: 0.9rem;
 }
 
 .lobby-header {
@@ -750,63 +838,34 @@ fieldset {
   gap: 0.75rem;
 }
 
-.voice-toggle {
+.panel-voice-toggle {
+  position: absolute;
+  top: 1.25rem;
+  right: 1.25rem;
+  z-index: 10;
+}
+
+.voice-icon-btn {
+  width: 44px;
+  height: 44px;
   border-radius: 999px;
   border: 1px solid rgba(255, 255, 255, 0.2);
-  background: transparent;
+  background: rgba(0, 0, 0, 0.45);
   color: #f4f4f5;
-  padding: 0.4rem 1rem;
-  font-size: 0.85rem;
-  cursor: pointer;
-  transition: background 0.3s ease, color 0.3s ease;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 0.5rem;
-}
-
-.voice-toggle.icon {
-  width: 40px;
-  height: 40px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
   font-size: 1.1rem;
-  padding: 0;
+  cursor: pointer;
+  transition: background 0.2s ease, border-color 0.2s ease, transform 0.2s ease;
 }
 
-.voice-toggle-pill {
-  min-width: 220px;
-  padding: 0.5rem 1.1rem;
-  justify-content: flex-start;
+.voice-icon-btn.active {
+  background: rgba(165, 29, 49, 0.9);
+  border-color: rgba(165, 29, 49, 0.9);
 }
 
-.voice-toggle-pill .voice-icon {
-  font-size: 1.2rem;
-}
-
-.voice-toggle-pill .voice-copy {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  line-height: 1.2;
-}
-
-.voice-toggle-pill .voice-copy strong {
-  font-size: 0.85rem;
-}
-
-.voice-toggle-pill .voice-copy small {
-  font-size: 0.7rem;
-  color: var(--text-muted);
-}
-
-.voice-toggle.active {
-  background: rgba(165, 29, 49, 0.85);
-  border-color: transparent;
-}
-
-.voice-toggle:disabled {
+.voice-icon-btn:disabled {
   opacity: 0.5;
   cursor: not-allowed;
 }

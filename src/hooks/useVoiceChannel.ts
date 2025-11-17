@@ -48,6 +48,7 @@ export const useVoiceChannel = ({
   const presenceDocRef = useRef<ReturnType<typeof doc> | null>(null);
   const snapshotUnsubRef = useRef<Unsubscribe | null>(null);
   const callMapRef = useRef<Map<string, MediaConnection>>(new Map());
+  const listenOnlyRef = useRef(listenOnly);
 
   const resetRemoteStreams = useCallback(() => {
     setRemoteStreams([]);
@@ -261,6 +262,24 @@ export const useVoiceChannel = ({
     if (connected || connecting) return;
     void joinChannel();
   }, [autoJoin, connected, connecting, joinChannel]);
+
+  useEffect(() => {
+    if (listenOnlyRef.current === listenOnly) return;
+    listenOnlyRef.current = listenOnly;
+    if (!auctionId || !clientId) return;
+    if (!peerRef.current) {
+      if (autoJoin) {
+        void joinChannel();
+      }
+      return;
+    }
+    (async () => {
+      await leaveChannel();
+      if (autoJoin) {
+        await joinChannel();
+      }
+    })();
+  }, [listenOnly, autoJoin, auctionId, clientId, joinChannel, leaveChannel]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;

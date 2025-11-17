@@ -62,7 +62,17 @@ interface CategoryFormState {
   id: string;
   label: "A" | "B" | "C" | "D" | "E";
   basePrice: number;
+  basePriceInput: string;
   playersText: string;
+}
+
+interface VoiceButtonControl {
+  connected: boolean;
+  connecting: boolean;
+  canToggle: boolean;
+  toggle: () => void;
+  stageLabel: string;
+  mode: "talk" | "listen";
 }
 
 const CATEGORY_LABELS: CategoryFormState["label"][] = [
@@ -71,6 +81,22 @@ const CATEGORY_LABELS: CategoryFormState["label"][] = [
   "C",
   "D",
   "E"
+];
+
+const CRICKET_POSITIONS = [
+  "Opener 1",
+  "Opener 2",
+  "One down",
+  "Two down",
+  "Three down",
+  "Four down",
+  "Five down",
+  "Six down",
+  "Seven down",
+  "Eight down",
+  "Nine down",
+  "Ten down",
+  "Eleven"
 ];
 
 const usePublicAuctions = () => {
@@ -150,8 +176,14 @@ const App = () => {
   }, [toast]);
 
   useAdminAutomation(auction, participants, selfParticipant, notify);
+  const viewingOnly = useMemo(
+    () => Boolean(auction && auction.visibility === "public" && !selfParticipant),
+    [auction?.id, auction?.visibility, selfParticipant?.id]
+  );
+  const viewerCount = viewingOnly ? auction?.viewCount ?? 0 : 0;
+  const showViewerCount = viewingOnly && viewerCount > 0;
   useEffect(() => {
-    if (!auction || auction.visibility !== "public") return;
+    if (!viewingOnly || !auction) return;
     if (typeof window === "undefined") return;
     const key = `saifur-auction:view:${auction.id}`;
     if (window.localStorage.getItem(key)) return;
@@ -159,26 +191,31 @@ const App = () => {
     incrementViewCount(auction.id).catch(() => {
       window.localStorage.removeItem(key);
     });
-  }, [auction?.id, auction?.visibility]);
-
-  const viewingOnly = Boolean(auction && auction.visibility === "public" && !selfParticipant);
+  }, [viewingOnly, auction?.id]);
+  const [micEnabled, setMicEnabled] = useState(false);
+  useEffect(() => {
+    if (!selfParticipant) {
+      setMicEnabled(false);
+    }
+  }, [selfParticipant?.id]);
 
   const voiceCapableViews: ViewMode[] = ["lobby", "auction", "post", "ranking", "results"];
   const voiceEnabled = Boolean(auction && voiceCapableViews.includes(view));
-  const listenOnlyMode = Boolean(viewingOnly && auction && auction.visibility === "public");
+  const canSpeak = Boolean(selfParticipant);
+  const shouldUseMic = Boolean(canSpeak && micEnabled);
+  const listenOnlyMode = viewingOnly || !shouldUseMic;
   const {
     connected: voiceConnected,
     connecting: voiceConnecting,
     error: voiceError,
     remoteStreams: voiceStreams,
-    toggle: toggleVoice,
     leave: leaveVoice
   } = useVoiceChannel({
     auctionId: (voiceEnabled || listenOnlyMode) && auction ? auction.id : null,
     clientId: clientId || null,
     scope: auction?.status === "lobby" ? "lobby" : "live",
     listenOnly: listenOnlyMode,
-    autoJoin: false
+    autoJoin: true
   });
   const lastVoiceStateRef = useRef(voiceConnected);
   useEffect(() => {
@@ -216,9 +253,20 @@ const App = () => {
       void leaveVoice();
     }
   }, [selfParticipant, listenOnlyMode, voiceConnected, leaveVoice]);
-  const canUseVoice = Boolean(selfParticipant && voiceEnabled);
+  const canUseVoice = Boolean(canSpeak && voiceEnabled);
   const listenOnlyAvailable = Boolean(listenOnlyMode && voiceEnabled);
   const voiceStageLabel = auction?.status === "lobby" ? "the lobby" : "the floor";
+  const voiceButtonControl =
+    canUseVoice && (voiceEnabled || listenOnlyMode)
+      ? {
+          connected: shouldUseMic && voiceConnected,
+          connecting: voiceConnecting,
+          canToggle: true,
+          toggle: () => setMicEnabled((prev) => !prev),
+          stageLabel: voiceStageLabel,
+          mode: shouldUseMic ? ("talk" as const) : ("listen" as const)
+        }
+      : null;
 
   const handleCreated = (newAuctionId: string) => {
     setActiveAuctionId(newAuctionId);
@@ -293,6 +341,8 @@ const App = () => {
               participants={participants}
               selfParticipant={selfParticipant}
               notify={notify}
+              voiceControl={voiceButtonControl}
+              viewerCount={showViewerCount ? viewerCount : null}
             />
           )
         );
@@ -304,6 +354,7 @@ const App = () => {
               participants={participants}
               selfParticipant={selfParticipant}
               notify={notify}
+              voiceControl={voiceButtonControl}
             />
           )
         );
@@ -315,6 +366,7 @@ const App = () => {
               participants={participants}
               selfParticipant={selfParticipant}
               notify={notify}
+              voiceControl={voiceButtonControl}
             />
           )
         );
@@ -326,11 +378,20 @@ const App = () => {
               participants={participants}
               selfParticipant={selfParticipant}
               notify={notify}
+              voiceControl={voiceButtonControl}
             />
           )
         );
       case "results":
-        return auction && <ResultsBoard auction={auction} participants={participants} />;
+        return (
+          auction && (
+            <ResultsBoard
+              auction={auction}
+              participants={participants}
+              voiceControl={voiceButtonControl}
+            />
+          )
+        );
       default:
         return null;
     }
@@ -349,25 +410,6 @@ const App = () => {
           <p className="hero-subtitle">The night begins when the auction starts.</p>
         </div>
         <div className="header-actions">
-          {canUseVoice && (
-            <VoiceControlButton
-              connected={voiceConnected}
-              connecting={voiceConnecting}
-              canUseVoice={canUseVoice}
-              toggle={toggleVoice}
-              stageLabel={voiceStageLabel}
-            />
-          )}
-          {!canUseVoice && listenOnlyAvailable && (
-            <VoiceControlButton
-              connected={voiceConnected}
-              connecting={voiceConnecting}
-              canUseVoice
-              toggle={toggleVoice}
-              stageLabel={voiceStageLabel}
-              mode="listen"
-            />
-          )}
           {auction && (
             <div className="session-chip">
               <div>
@@ -376,7 +418,6 @@ const App = () => {
                   {auction.name} -{" "}
                   <span className="status-pill">{auction.status.toUpperCase()}</span>
                 </p>
-                {auction.visibility === "public" && <ViewPill count={auction.viewCount ?? 0} />}
                 {viewingOnly && <p className="chip-label">Viewing only</p>}
               </div>
               <button className="btn text" onClick={handleLeaveSession}>
@@ -447,6 +488,7 @@ const CreateAuctionForm = ({
       id: crypto.randomUUID(),
       label: "A",
       basePrice: 10,
+      basePriceInput: "10",
       playersText: ""
     }
   ]);
@@ -471,6 +513,7 @@ const CreateAuctionForm = ({
         id: crypto.randomUUID(),
         label: remaining[0],
         basePrice: prev.length ? prev[prev.length - 1].basePrice : 10,
+        basePriceInput: String(prev.length ? prev[prev.length - 1].basePrice : 10),
         playersText: ""
       }
     ]);
@@ -482,23 +525,31 @@ const CreateAuctionForm = ({
     );
   };
 
+  const handleBasePriceInput = (id: string, rawValue: string) => {
+    const sanitized = rawValue.replace(/[^0-9]/g, "");
+    updateCategory(id, {
+      basePriceInput: sanitized,
+      basePrice: Number(sanitized || 0)
+    });
+  };
+
   const handleSubmit = async (event: FormEvent) => {
     event.preventDefault();
     if (!password.trim()) {
       notify("error", "Set a password so friends can join safely.");
       return;
     }
-    const resolvedParticipants = Number(maxParticipantsInput);
+    const resolvedParticipants = Number(maxParticipantsInput || "0");
     if (!Number.isFinite(resolvedParticipants) || resolvedParticipants < 2 || resolvedParticipants > 20) {
       notify("error", "Set between 2 and 20 friends for this auction.");
       return;
     }
-    const resolvedPlayersPerTeam = Number(playersPerTeamInput);
+    const resolvedPlayersPerTeam = Number(playersPerTeamInput || "0");
     if (!Number.isFinite(resolvedPlayersPerTeam) || resolvedPlayersPerTeam < 1 || resolvedPlayersPerTeam > 20) {
       notify("error", "Players per team must be between 1 and 20.");
       return;
     }
-    const resolvedBudget = Number(budgetPerPlayerInput);
+    const resolvedBudget = Number(budgetPerPlayerInput || "0");
     if (!Number.isFinite(resolvedBudget) || resolvedBudget < 10) {
       notify("error", "Budget per player should be at least $10.");
       return;
@@ -575,35 +626,36 @@ const CreateAuctionForm = ({
         <label>
           How many friends will play?
           <input
-            type="number"
-            min={2}
-            max={20}
+            type="text"
             inputMode="numeric"
+            pattern="[0-9]*"
+            placeholder="6"
             value={maxParticipantsInput}
-            onChange={(event) => setMaxParticipantsInput(event.target.value)}
+            onChange={(event) => setMaxParticipantsInput(event.target.value.replace(/^0+/, ""))}
             required
           />
         </label>
         <label>
           Players per team
           <input
-            type="number"
-            min={1}
-            max={20}
+            type="text"
             inputMode="numeric"
+            pattern="[0-9]*"
+            placeholder="11"
             value={playersPerTeamInput}
-            onChange={(event) => setPlayersPerTeamInput(event.target.value)}
+            onChange={(event) => setPlayersPerTeamInput(event.target.value.replace(/^0+/, ""))}
             required
           />
         </label>
         <label>
           Budget per player (USD)
           <input
-            type="number"
-            min={10}
+            type="text"
             inputMode="numeric"
+            pattern="[0-9]*"
+            placeholder="100"
             value={budgetPerPlayerInput}
-            onChange={(event) => setBudgetPerPlayerInput(event.target.value)}
+            onChange={(event) => setBudgetPerPlayerInput(event.target.value.replace(/^0+/, ""))}
             required
           />
         </label>
@@ -648,14 +700,11 @@ const CreateAuctionForm = ({
                     <label>
                       Base price (USD)
                       <input
-                        type="number"
-                        min={1}
-                        value={category.basePrice}
-                        onChange={(event) =>
-                          updateCategory(category.id, {
-                            basePrice: Number(event.target.value)
-                          })
-                        }
+                        type="text"
+                        inputMode="numeric"
+                        pattern="[0-9]*"
+                        value={category.basePriceInput}
+                        onChange={(event) => handleBasePriceInput(category.id, event.target.value)}
                       />
                     </label>
                   </div>
@@ -816,12 +865,16 @@ const LobbyView = ({
   auction,
   participants,
   selfParticipant,
-  notify
+  notify,
+  voiceControl,
+  viewerCount
 }: {
   auction: Auction;
   participants: Participant[];
   selfParticipant: Participant | null;
   notify: (type: ToastState["type"], text: string) => void;
+  voiceControl: VoiceButtonControl | null;
+  viewerCount: number | null;
 }) => {
   const isAdmin = selfParticipant?.role === "admin";
   const queuedPlayers = useMemo(() => buildPlayerQueue(auction.categories), [auction.categories]);
@@ -835,6 +888,7 @@ const LobbyView = ({
 
   return (
     <section className="panel-card lobby">
+      <PanelVoiceButton control={voiceControl} />
       <div className="lobby-header">
         <div className="lobby-title-row">
           <p className="eyebrow">Lobby</p>
@@ -846,7 +900,7 @@ const LobbyView = ({
                 {auction.participantCount}/{auction.maxParticipants}
               </strong>
             </span>
-            {auction.visibility === "public" && <ViewPill count={auction.viewCount ?? 0} />}
+            {viewerCount && <ViewPill count={viewerCount} />}
           </div>
         </div>
         <div className="share-block">
@@ -920,66 +974,51 @@ const LobbyView = ({
   );
 };
 
-const VoiceControlButton = ({
+const PanelVoiceButton = ({ control }: { control: VoiceButtonControl | null }) => {
+  if (!control) return null;
+  return (
+    <div className="panel-voice-toggle">
+      <VoiceIconButton {...control} />
+    </div>
+  );
+};
+
+const VoiceIconButton = ({
   connected,
   connecting,
-  canUseVoice,
+  canToggle,
   toggle,
   stageLabel,
-  mode = "talk"
-}: {
-  connected: boolean;
-  connecting: boolean;
-  canUseVoice: boolean;
-  toggle: () => void;
-  stageLabel: string;
-  mode?: "talk" | "listen";
-}) => {
-  const statusText = connecting
-    ? "Connecting..."
-    : connected
-      ? mode === "talk"
-        ? "Voice live"
-        : "Listening"
-      : mode === "talk"
-        ? "Voice off"
-        : "Listen in";
-  const helperText =
-    mode === "listen"
+  mode
+}: VoiceButtonControl) => {
+  const icon = connecting ? "…" : mode === "listen" ? (connected ? "🎧" : "👂") : connected ? "🔊" : "🎙";
+  const label =
+    mode === "talk"
       ? connected
-        ? `Listening to ${stageLabel}.`
-        : "Tap to hear the public call. Mic stays muted."
-      : !canUseVoice
-        ? "Join the session to speak."
-        : connecting
-          ? "Hang tight..."
-          : connected
-            ? `Chatting in ${stageLabel}.`
-            : "Tap to talk with everyone.";
+        ? "Leave voice chat"
+        : "Join voice chat"
+      : connected
+        ? "Stop listening"
+        : "Listen in";
+  const title =
+    mode === "talk"
+      ? connected
+        ? `Live mic in ${stageLabel}`
+        : `Tap to speak in ${stageLabel}`
+      : connected
+        ? `Listening to ${stageLabel}`
+        : `Tap to listen to ${stageLabel}`;
   return (
     <button
       type="button"
-      className={`voice-toggle voice-toggle-pill ${connected ? "active" : ""}`}
+      className={`voice-icon-btn ${mode} ${connected ? "active" : ""}`}
       onClick={toggle}
-      disabled={!canUseVoice || connecting}
+      disabled={!canToggle || connecting}
       aria-busy={connecting}
-      aria-label={
-        mode === "talk"
-          ? connected
-            ? "Leave voice chat"
-            : "Join voice chat"
-          : connected
-            ? "Stop listening"
-            : "Listen in"
-      }
+      aria-label={label}
+      title={title}
     >
-      <span className="voice-icon">
-        {connecting ? "..." : connected ? (mode === "talk" ? "🔊" : "🎧") : mode === "talk" ? "🎙" : "👂"}
-      </span>
-      <span className="voice-copy">
-        <strong>{statusText}</strong>
-        <small>{helperText}</small>
-      </span>
+      <span>{icon}</span>
     </button>
   );
 };
@@ -1007,7 +1046,7 @@ const RemoteVoiceAudio = ({ stream }: { stream: MediaStream }) => {
 };
 
 const ViewPill = ({ count }: { count?: number }) => {
-  if (typeof count !== "number") return null;
+  if (typeof count !== "number" || count <= 0) return null;
   return <span className="view-pill">👀 {count} views</span>;
 };
 
@@ -1057,12 +1096,14 @@ const LiveAuctionBoard = ({
   auction,
   participants,
   selfParticipant,
-  notify
+  notify,
+  voiceControl
 }: {
   auction: Auction;
   participants: Participant[];
   selfParticipant: Participant | null;
   notify: (type: ToastState["type"], text: string) => void;
+  voiceControl: VoiceButtonControl | null;
 }) => {
   const queue = useMemo(() => buildPlayerQueue(auction.categories), [auction.categories]);
   const activeSlot = auction.manualPlayer ?? queue[auction.currentPlayerIndex] ?? null;
@@ -1253,6 +1294,7 @@ const LiveAuctionBoard = ({
 
   return (
     <section className="panel-card live-board">
+      <PanelVoiceButton control={voiceControl} />
       <div className="deck-card">
         <div className="deck-head">
           <div className="deck-copy">
@@ -1266,7 +1308,6 @@ const LiveAuctionBoard = ({
             {isManual && <p className="muted-label">Re-auctioning an unsold player</p>}
           </div>
           <div className="deck-meta">
-            {auction.visibility === "public" && <ViewPill count={auction.viewCount ?? 0} />}
             <div className="timer-display">
               <span>Time left</span>
               <strong>{timerLabel}</strong>
@@ -1431,12 +1472,14 @@ const TeamConfirmationPanel = ({
   auction,
   participants,
   selfParticipant,
-  notify
+  notify,
+  voiceControl
 }: {
   auction: Auction;
   participants: Participant[];
   selfParticipant: Participant | null;
   notify: (type: ToastState["type"], text: string) => void;
+  voiceControl: VoiceButtonControl | null;
 }) => {
   const roster = selfParticipant?.roster ?? [];
   const finalRoster = selfParticipant?.finalRoster ?? [];
@@ -1447,54 +1490,50 @@ const TeamConfirmationPanel = ({
     () => roster.map((player, index) => ({ ...player, key: `${player.playerName}-${index}` })),
     [roster]
   );
-  const initialSelection = useMemo(
-    () => rosterWithKeys.slice(0, limit).map((player) => player.key),
-    [rosterWithKeys, limit]
-  );
-
   const [sport, setSport] = useState<SportMode>(finalRoster.length ? finalSport : "cricket");
-  const [selectedKeys, setSelectedKeys] = useState<string[]>(initialSelection);
-  const [tagMap, setTagMap] = useState<Record<string, string>>({});
+  const cricketSlots = useMemo(() => {
+    return Array.from({ length: limit }).map((_, index) => ({
+      id: `cricket-${index}`,
+      label: CRICKET_POSITIONS[index] ?? `Player ${index + 1}`
+    }));
+  }, [limit]);
+  const [cricketAssignments, setCricketAssignments] = useState<Record<string, string | null>>({});
+  const [cricketWicketSlot, setCricketWicketSlot] = useState<string | null>(null);
   useEffect(() => {
-    setSelectedKeys(initialSelection);
-  }, [initialSelection.join("|")]);
-
-  const [draggingKey, setDraggingKey] = useState<string | null>(null);
-  const handleLineupDragStart = (key: string) => setDraggingKey(key);
-  const handleLineupDragOver = (event: React.DragEvent<HTMLLIElement>) => {
-    event.preventDefault();
-  };
-  const handleLineupDrop = (targetKey: string) => {
-    if (!draggingKey || draggingKey === targetKey) return;
-    setSelectedKeys((prev) => {
-      const from = prev.indexOf(draggingKey);
-      const to = prev.indexOf(targetKey);
-      if (from === -1 || to === -1) return prev;
-      const next = [...prev];
-      const [item] = next.splice(from, 1);
-      next.splice(to, 0, item);
+    setCricketAssignments((prev) => {
+      const next: Record<string, string | null> = {};
+      cricketSlots.forEach((slot) => {
+        next[slot.id] = prev[slot.id] ?? null;
+      });
       return next;
     });
-    setDraggingKey(null);
-  };
-  const handleLineupDragEnd = () => setDraggingKey(null);
+    setCricketWicketSlot((prev) => (prev && cricketSlots.some((slot) => slot.id === prev) ? prev : null));
+  }, [cricketSlots]);
 
-  const toggleSelection = (key: string) => {
-    setSelectedKeys((prev) => {
-      if (prev.includes(key)) {
-        return prev.filter((item) => item !== key);
+  const handleCricketAssign = (slotId: string, playerKey: string) => {
+    setCricketAssignments((prev) => {
+      const next = { ...prev };
+      const sanitized = playerKey || "";
+      if (sanitized) {
+        Object.entries(next).forEach(([key, value]) => {
+          if (key !== slotId && value === sanitized) {
+            next[key] = null;
+          }
+        });
       }
-      if (prev.length >= limit) {
-        notify("error", `You already picked ${limit} players.`);
-        return prev;
-      }
-      return [...prev, key];
+      next[slotId] = sanitized || null;
+      return next;
     });
   };
 
-  const handleTagChange = (key: string, value: string) => {
-    setTagMap((prev) => ({ ...prev, [key]: value.slice(0, 3).toUpperCase() }));
+  const handleWicketToggle = (slotId: string) => {
+    setCricketWicketSlot((prev) => (prev === slotId ? null : slotId));
   };
+
+  const cricketAllFilled = useMemo(
+    () => cricketSlots.every((slot) => Boolean(cricketAssignments[slot.id])),
+    [cricketSlots, cricketAssignments]
+  );
 
   const buildAssignmentMap = useCallback(
     (code: string, prev?: Record<string, string | null>) => {
@@ -1574,9 +1613,11 @@ const TeamConfirmationPanel = ({
         notify("error", "Assign every position before submitting.");
         return;
       }
-    } else if (selectedKeys.length !== limit) {
-      notify("error", `Select exactly ${limit} players before submitting.`);
-      return;
+    } else {
+      if (!cricketAllFilled) {
+        notify("error", "Assign every batting slot before submitting.");
+        return;
+      }
     }
 
     let payload: TaggedRosterEntry[] = [];
@@ -1602,15 +1643,21 @@ const TeamConfirmationPanel = ({
       formationCode = soccerFormationDef.code;
       formationLabel = soccerFormationDef.label;
     } else {
-      payload = selectedKeys
-        .map((key) => rosterWithKeys.find((player) => player.key === key))
-        .filter(Boolean)
-        .map((player, index) => ({
-          playerName: player!.playerName,
-          categoryLabel: player!.categoryLabel,
-          price: player!.price,
-          tag: tagMap[player!.key] ?? ""
-        }));
+      payload = cricketSlots.map((slot) => {
+        const playerKey = cricketAssignments[slot.id];
+        const player = rosterWithKeys.find((entry) => entry.key === playerKey);
+        if (!player) {
+          throw new Error("Missing player assignment.");
+        }
+        return {
+          playerName: player.playerName,
+          categoryLabel: player.categoryLabel,
+          price: player.price,
+          slotId: slot.id,
+          slotLabel: slot.label,
+          tag: cricketWicketSlot === slot.id ? "WK" : ""
+        };
+      });
     }
 
     try {
@@ -1634,8 +1681,8 @@ const TeamConfirmationPanel = ({
     const submittedSoccer = finalSport === "soccer" && finalFormation;
     return (
       <section className="panel-card">
+        <PanelVoiceButton control={voiceControl} />
         <h2>Your final squad</h2>
-        {auction.visibility === "public" && <ViewPill count={auction.viewCount ?? 0} />}
         {submittedSoccer ? (
           <>
             <p className="muted-label">{finalFormation?.label}</p>
@@ -1649,21 +1696,14 @@ const TeamConfirmationPanel = ({
             </ul>
           </>
         ) : (
-          <ol className="ranking-list">
+          <ul className="price-list">
             {finalRoster.map((player, index) => (
               <li key={`${player.playerName}-${index}`}>
-                <div>
-                  <strong>
-                    #{index + 1} {player.playerName}
-                  </strong>
-                  <p>
-                    Cat {player.categoryLabel} - {formatCurrency(player.price)}
-                  </p>
-                </div>
-                {player.tag && <span className="mini-pill">{player.tag}</span>}
+                {player.playerName} - {formatCurrency(player.price)}{" "}
+                {player.tag === "WK" ? "(WK)" : ""}
               </li>
             ))}
-          </ol>
+          </ul>
         )}
         <div className="roster-card" style={{ marginTop: "1.5rem" }}>
           <h3>Others</h3>
@@ -1694,8 +1734,8 @@ const TeamConfirmationPanel = ({
 
   return (
     <section className="panel-card">
+      <PanelVoiceButton control={voiceControl} />
       <h2>Lock your final {limit}</h2>
-      {auction.visibility === "public" && <ViewPill count={auction.viewCount ?? 0} />}
       <p className="muted-label">Switch between cricket order or soccer formation.</p>
       <div className="sport-toggle">
         <button
@@ -1712,72 +1752,61 @@ const TeamConfirmationPanel = ({
         </button>
       </div>
       {sport === "cricket" ? (
-        <div className="roster-grid">
-          <div>
-            <h3>Available</h3>
-            <p className="muted-label">
-              {selectedKeys.length}/{limit} selected
-            </p>
-            <ul className="participant-list lineup-options">
-              {rosterWithKeys.map((player) => {
-                const checked = selectedKeys.includes(player.key);
-                const disabled = !checked && selectedKeys.length >= limit;
+        <div className="cricket-builder">
+          <div className="formation-editor">
+            <ul>
+              {cricketSlots.map((slot) => {
+                const assigned = cricketAssignments[slot.id] ?? "";
+                const assignedElsewhere = (playerKey: string) =>
+                  Object.entries(cricketAssignments).some(
+                    ([key, value]) => key !== slot.id && value === playerKey
+                  );
                 return (
-                  <li key={player.key}>
-                    <label>
-                      <input
-                        type="checkbox"
-                        checked={checked}
-                        disabled={disabled}
-                        onChange={() => toggleSelection(player.key)}
-                      />
-                      <span>
-                        {player.playerName} - {formatCurrency(player.price)}
-                      </span>
-                    </label>
+                  <li key={slot.id}>
+                    <div className="cricket-slot-head">
+                      <strong>{slot.label}</strong>
+                      <label className={`wk-toggle ${cricketWicketSlot === slot.id ? "active" : ""}`}>
+                        <input
+                          type="radio"
+                          name="wk-slot"
+                          checked={cricketWicketSlot === slot.id}
+                          onChange={() => handleWicketToggle(slot.id)}
+                        />
+                        WK
+                      </label>
+                    </div>
+                    <select
+                      value={assigned ?? ""}
+                      onChange={(event) => handleCricketAssign(slot.id, event.target.value)}
+                    >
+                      <option value="">Select player</option>
+                      {rosterWithKeys.map((player) => (
+                        <option
+                          key={player.key}
+                          value={player.key}
+                          disabled={assignedElsewhere(player.key)}
+                        >
+                          {player.playerName} - {formatCurrency(player.price)}
+                        </option>
+                      ))}
+                    </select>
                   </li>
                 );
               })}
             </ul>
           </div>
-          <div>
-            <h3>Selected lineup</h3>
-            {selectedKeys.length === 0 && (
-              <p className="muted-label">Pick players to build your lineup.</p>
-            )}
-            <ol className="ranking-list selected-lineup">
-              {selectedKeys.map((key, index) => {
-                const player = rosterWithKeys.find((item) => item.key === key);
-                if (!player) return null;
+          <div className="player-pool">
+            <h3>Player pool</h3>
+            <ul>
+              {rosterWithKeys.map((player) => {
+                const assigned = Object.values(cricketAssignments).includes(player.key);
                 return (
-                  <li
-                    key={key}
-                    draggable
-                    onDragStart={() => handleLineupDragStart(key)}
-                    onDragOver={handleLineupDragOver}
-                    onDrop={() => handleLineupDrop(key)}
-                    onDragEnd={handleLineupDragEnd}
-                    className={draggingKey === key ? "dragging" : ""}
-                  >
-                    <div>
-                      <strong>
-                        #{index + 1} {player.playerName}
-                      </strong>
-                      <p className="lineup-meta">{formatCurrency(player.price)}</p>
-                    </div>
-                    <div className="lineup-actions">
-                      <input
-                        type="text"
-                        maxLength={3}
-                        value={tagMap[key] ?? ""}
-                        onChange={(event) => handleTagChange(key, event.target.value)}
-                        placeholder="TAG"
-                      />
-                    </div>
+                  <li key={player.key} className={assigned ? "assigned" : ""}>
+                    {player.playerName} - {formatCurrency(player.price)} {assigned ? "(Placed)" : ""}
                   </li>
                 );
               })}
-            </ol>
+            </ul>
           </div>
         </div>
       ) : (
@@ -1884,12 +1913,14 @@ const RankingPanel = ({
   auction,
   participants,
   selfParticipant,
-  notify
+  notify,
+  voiceControl
 }: {
   auction: Auction;
   participants: Participant[];
   selfParticipant: Participant | null;
   notify: (type: ToastState["type"], text: string) => void;
+  voiceControl: VoiceButtonControl | null;
 }) => {
   const others = participants.filter((player) => player.id !== selfParticipant?.id);
   const [order, setOrder] = useState(others.map((player) => player.id));
@@ -1924,8 +1955,8 @@ const RankingPanel = ({
 
   return (
     <section className="panel-card">
+      <PanelVoiceButton control={voiceControl} />
       <h2>Rank everyone else</h2>
-      {auction.visibility === "public" && <ViewPill count={auction.viewCount ?? 0} />}
       <p>Move cards to reorder. Top pick earns the most points.</p>
       <ol className="ranking-list">
         {order.map((participantId, index) => {
@@ -1942,7 +1973,6 @@ const RankingPanel = ({
                 <strong>
                   #{index + 1} {target.name}
                 </strong>
-                <p>{formatCurrency(target.budgetRemaining)} left</p>
                 {showFormation && target.finalRoster && target.finalRosterFormation && (
                   <div className="ranking-formation">
                     <SoccerFormationBoard
@@ -1952,21 +1982,13 @@ const RankingPanel = ({
                     />
                   </div>
                 )}
-                <ul className="mini-roster">
-                  {lineup.map((player, idx) => {
-                    const slotLabel =
-                      target.finalRosterSport === "soccer" && "slotLabel" in player && player.slotLabel
-                        ? `${player.slotLabel} - `
-                        : "";
-                    const tag = "tag" in player && player.tag ? ` (${player.tag})` : "";
-                    return (
-                      <li key={`${player.playerName}-${idx}`}>
-                        {slotLabel}
-                        {player.playerName}
-                        {tag} - Cat {player.categoryLabel}
-                      </li>
-                    );
-                  })}
+                <ul className="price-list">
+                  {lineup.map((player, idx) => (
+                    <li key={`${player.playerName}-${idx}`}>
+                      {player.playerName} - {formatCurrency(player.price)}{" "}
+                      {"tag" in player && player.tag === "WK" ? "(WK)" : ""}
+                    </li>
+                  ))}
                 </ul>
               </div>
               <div className="rank-actions">
@@ -2011,17 +2033,19 @@ const RankingPanel = ({
 
 const ResultsBoard = ({
   auction,
-  participants
+  participants,
+  voiceControl
 }: {
   auction: Auction;
   participants: Participant[];
+  voiceControl: VoiceButtonControl | null;
 }) => {
   const results = auction.results ?? [];
 
   return (
     <section className="panel-card">
+      <PanelVoiceButton control={voiceControl} />
       <h2>Final leaderboard</h2>
-      {auction.visibility === "public" && <ViewPill count={auction.viewCount ?? 0} />}
       {!results.length && <p>Waiting for admin to publish results...</p>}
       {results.length > 0 && (
         <table className="results-table">
@@ -2061,21 +2085,13 @@ const ResultsBoard = ({
                   players={player.finalRoster}
                 />
               )}
-              <ul>
-                {lineup.map((entry, index) => {
-                  const slotLabel =
-                    player.finalRosterSport === "soccer" && "slotLabel" in entry && entry.slotLabel
-                      ? `${entry.slotLabel} - `
-                      : "";
-                  const tag = "tag" in entry && entry.tag ? ` (${entry.tag})` : "";
-                  return (
-                    <li key={`${entry.playerName}-${index}`}>
-                      {slotLabel}
-                      {entry.playerName}
-                      {tag} - {formatCurrency(entry.price)}
-                    </li>
-                  );
-                })}
+              <ul className="price-list">
+                {lineup.map((entry, index) => (
+                  <li key={`${entry.playerName}-${index}`}>
+                    {entry.playerName} - {formatCurrency(entry.price)}{" "}
+                    {"tag" in entry && entry.tag === "WK" ? "(WK)" : ""}
+                  </li>
+                ))}
               </ul>
             </div>
           );
