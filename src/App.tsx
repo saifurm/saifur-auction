@@ -788,7 +788,7 @@ const JoinAuctionPanel = ({
       </button>
       <div className="join-grid">
         <form onSubmit={handleJoin} className="form-grid">
-          <h3>Join with password</h3>
+          <h3>Join Auction (Players)</h3>
           <label>
             Your name (10 char max)
             <input
@@ -822,10 +822,8 @@ const JoinAuctionPanel = ({
           </button>
         </form>
         <div className="public-list">
-          <h3>Public auctions live now</h3>
-          <p className="muted-label">
-            Tap Watch to spectate immediately. You still need the password to play.
-          </p>
+          <h3>Watch public auctions live</h3>
+          <p className="muted-label">Tap Watch to spectate ongoing public auctions.</p>
           {!publicAuctions.length && <p>No public auctions yet.</p>}
           <ul>
             {publicAuctions.map((item) => (
