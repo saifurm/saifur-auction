@@ -87,7 +87,11 @@ export interface RosterEntry {
 
 export interface TaggedRosterEntry extends RosterEntry {
   tag?: string;
+  slotId?: string;
+  slotLabel?: string;
 }
+
+export type SportMode = "cricket" | "soccer";
 
 export interface Participant {
   id: string;
@@ -98,6 +102,11 @@ export interface Participant {
   playersNeeded: number;
   roster: RosterEntry[];
   finalRoster?: TaggedRosterEntry[];
+  finalRosterSport?: SportMode;
+  finalRosterFormation?: {
+    code: string;
+    label: string;
+  } | null;
   hasSubmittedTeam: boolean;
   rankingSubmitted: boolean;
   rankings?: Record<string, number>;

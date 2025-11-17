@@ -81,7 +81,8 @@ body {
   display: flex;
   flex-direction: column;
   gap: 0.75rem;
-  align-items: flex-start;
+  align-items: flex-end;
+  text-align: right;
 }
 
 .session-chip {
@@ -382,6 +383,23 @@ fieldset {
   opacity: 0.6;
 }
 
+.sport-toggle {
+  display: inline-flex;
+  gap: 0.5rem;
+  margin: 0.5rem 0 1rem;
+  flex-wrap: wrap;
+}
+
+.sport-toggle .btn {
+  padding: 0.4rem 1rem;
+}
+
+.sport-toggle .btn.ghost.active {
+  background: rgba(165, 29, 49, 0.1);
+  border-color: var(--accent);
+  color: #fff;
+}
+
 .lineup-actions {
   display: flex;
   align-items: center;
@@ -394,17 +412,140 @@ fieldset {
   text-transform: uppercase;
 }
 
+.soccer-builder {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+}
+
+.formation-select select {
+  margin-top: 0.35rem;
+  padding: 0.5rem 0.75rem;
+  border-radius: 8px;
+  border: 1px solid var(--border-color);
+  background: transparent;
+  color: #f4f4f5;
+}
+
+.soccer-layout {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1.25rem;
+}
+
+.formation-editor {
+  flex: 1;
+  min-width: 240px;
+}
+
+.formation-editor ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.formation-editor li {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.formation-editor select {
+  flex: 1;
+  padding: 0.4rem 0.6rem;
+  border-radius: 8px;
+  border: 1px solid var(--border-color);
+  background: rgba(255, 255, 255, 0.02);
+  color: #f4f4f5;
+}
+
+.player-pool {
+  border: 1px solid var(--border-color);
+  border-radius: 12px;
+  padding: 0.75rem;
+}
+
+.player-pool ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0.35rem;
+}
+
+.player-pool li.assigned {
+  color: var(--accent);
+}
+
+.soccer-pitch {
+  position: relative;
+  flex: 1;
+  min-width: 260px;
+  aspect-ratio: 3 / 4;
+  border-radius: 18px;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  background: radial-gradient(circle at 50% 20%, #2e7d32, #0c2a11);
+  box-shadow: inset 0 0 0 2px rgba(255, 255, 255, 0.05);
+}
+
+.soccer-pitch.compact {
+  max-width: 320px;
+  margin: 0 auto;
+}
+
+.soccer-slot {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  text-align: center;
+  background: rgba(0, 0, 0, 0.4);
+  border-radius: 12px;
+  padding: 0.25rem 0.35rem;
+  min-width: 64px;
+  color: #f4f4f5;
+  font-size: 0.7rem;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.soccer-slot.filled {
+  background: rgba(165, 29, 49, 0.8);
+  border-color: rgba(165, 29, 49, 0.6);
+}
+
+.soccer-slot .label {
+  font-size: 0.6rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  display: block;
+  opacity: 0.8;
+}
+
+.soccer-slot strong {
+  display: block;
+  margin-top: 0.15rem;
+  font-size: 0.75rem;
+}
+
+.ranking-formation {
+  margin: 0.75rem 0;
+}
+
+.ranking-formation .soccer-pitch {
+  max-width: 320px;
+}
+
+.muted-label.warning {
+  color: #f7d154;
+}
+
 .lobby-header {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
   gap: 0.85rem;
   align-items: flex-start;
   width: 100%;
-}
-
-.lobby-voice-toggle {
-  justify-self: end;
-  align-self: flex-start;
 }
 
 .lobby-header .share-block {
@@ -538,6 +679,10 @@ fieldset {
   font-size: 0.85rem;
   cursor: pointer;
   transition: background 0.3s ease, color 0.3s ease;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
 }
 
 .voice-toggle.icon {
@@ -550,9 +695,56 @@ fieldset {
   padding: 0;
 }
 
+.voice-toggle-pill {
+  min-width: 220px;
+  padding: 0.5rem 1.1rem;
+  justify-content: flex-start;
+}
+
+.voice-toggle-pill .voice-icon {
+  font-size: 1.2rem;
+}
+
+.voice-toggle-pill .voice-copy {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  line-height: 1.2;
+}
+
+.voice-toggle-pill .voice-copy strong {
+  font-size: 0.85rem;
+}
+
+.voice-toggle-pill .voice-copy small {
+  font-size: 0.7rem;
+  color: var(--text-muted);
+}
+
 .voice-toggle.active {
   background: rgba(165, 29, 49, 0.85);
   border-color: transparent;
+}
+
+.voice-toggle:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.voice-audio-layer {
+  position: fixed;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  clip-path: inset(50%);
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+.voice-audio-layer audio {
+  width: 1px;
+  height: 1px;
 }
 
 .admin-controls {

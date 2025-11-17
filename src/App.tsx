@@ -1,4 +1,5 @@
-﻿import {
+import {
+  useCallback,
   useEffect,
   useMemo,
   useRef,
@@ -17,9 +18,12 @@ import { db } from "./firebase";
 import { useClientId } from "./hooks/useClientId";
 import { useAuctionData } from "./hooks/useAuctionData";
 import { useCountdown } from "./hooks/useCountdown";
+import { useVoiceChannel } from "./hooks/useVoiceChannel";
+import type { VoiceStream } from "./hooks/useVoiceChannel";
 import { formatCurrency, formatTimer } from "./utils/format";
 import { buildPlayerQueue } from "./utils/players";
-import type { Auction, Participant, CompletedPlayerEntry } from "./types";
+import { SOCCER_FORMATIONS, getFormationByCode } from "./utils/formations";
+import type { Auction, Participant, CompletedPlayerEntry, SportMode, TaggedRosterEntry } from "./types";
 import {
   createAuction,
   finalizeCurrentPlayer,
@@ -146,6 +150,51 @@ const App = () => {
 
   useAdminAutomation(auction, participants, selfParticipant, notify);
 
+  const voiceCapableViews: ViewMode[] = ["lobby", "auction", "post", "ranking", "results"];
+  const voiceEnabled = Boolean(auction && voiceCapableViews.includes(view));
+  const {
+    connected: voiceConnected,
+    connecting: voiceConnecting,
+    error: voiceError,
+    remoteStreams: voiceStreams,
+    toggle: toggleVoice,
+    leave: leaveVoice
+  } = useVoiceChannel({
+    auctionId: voiceEnabled && auction ? auction.id : null,
+    clientId: clientId || null,
+    scope: auction?.status === "lobby" ? "lobby" : "live"
+  });
+  const lastVoiceStateRef = useRef(voiceConnected);
+  useEffect(() => {
+    if (!voiceEnabled) {
+      lastVoiceStateRef.current = voiceConnected;
+      return;
+    }
+    if (voiceConnected !== lastVoiceStateRef.current) {
+      const isLobby = auction?.status === "lobby";
+      notify("success", voiceConnected ? (isLobby ? "Joined lobby voice chat." : "Joined voice chat.") : "Left voice chat.");
+      lastVoiceStateRef.current = voiceConnected;
+    }
+  }, [voiceConnected, voiceEnabled, notify, auction?.status]);
+  const voiceErrorRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!voiceEnabled) {
+      voiceErrorRef.current = voiceError;
+      return;
+    }
+    if (voiceError && voiceError !== voiceErrorRef.current) {
+      notify("error", voiceError);
+      voiceErrorRef.current = voiceError;
+    }
+  }, [voiceError, notify, voiceEnabled]);
+  useEffect(() => {
+    if (!selfParticipant && voiceConnected) {
+      void leaveVoice();
+    }
+  }, [selfParticipant, voiceConnected, leaveVoice]);
+  const canUseVoice = Boolean(selfParticipant && voiceEnabled);
+  const voiceStageLabel = auction?.status === "lobby" ? "the lobby" : "the floor";
+
   const handleCreated = (newAuctionId: string) => {
     setActiveAuctionId(newAuctionId);
     setView("lobby");
@@ -269,23 +318,35 @@ const App = () => {
           <h1 className="hero-title">Midnight Draft Arena</h1>
           <p className="hero-subtitle">The night begins when the auction starts.</p>
         </div>
-        {auction && (
-          <div className="session-chip">
-            <div>
-              <p className="chip-label">Active auction</p>
-              <p className="chip-value">
-                {auction.name} -{" "}
-                <span className="status-pill">{auction.status.toUpperCase()}</span>
-              </p>
+        <div className="header-actions">
+          {voiceEnabled && (
+            <VoiceControlButton
+              connected={voiceConnected}
+              connecting={voiceConnecting}
+              canUseVoice={canUseVoice}
+              toggle={toggleVoice}
+              stageLabel={voiceStageLabel}
+            />
+          )}
+          {auction && (
+            <div className="session-chip">
+              <div>
+                <p className="chip-label">Active auction</p>
+                <p className="chip-value">
+                  {auction.name} -{" "}
+                  <span className="status-pill">{auction.status.toUpperCase()}</span>
+                </p>
+              </div>
+              <button className="btn text" onClick={handleLeaveSession}>
+                Leave
+              </button>
             </div>
-            <button className="btn text" onClick={handleLeaveSession}>
-              Leave
-            </button>
-          </div>
-        )}
+          )}
+        </div>
       </header>
       <main className="stage-panel">{loading ? <p>Loading...</p> : renderView()}</main>
-      <footer className="app-footer">© Saifur Rahman Mehedi</footer>
+      <VoiceAudioLayer streams={voiceStreams} />
+      <footer className="app-footer">ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â© Saifur Rahman Mehedi</footer>
     </div>
   );
 };
@@ -675,11 +736,6 @@ const LobbyView = ({
 }) => {
   const isAdmin = selfParticipant?.role === "admin";
   const queuedPlayers = useMemo(() => buildPlayerQueue(auction.categories), [auction.categories]);
-  const [voiceConnected, setVoiceConnected] = useState(false);
-  const toggleVoice = () => {
-    setVoiceConnected((prev) => !prev);
-    notify("success", !voiceConnected ? "Joined lobby voice chat." : "Left lobby voice chat.");
-  };
   const handleStart = async () => {
     try {
       await startAuction(auction.id);
@@ -728,13 +784,6 @@ const LobbyView = ({
           </div>
           {!isAdmin && <p className="muted-label">Waiting for admin to start</p>}
         </div>
-        <button
-          className={`voice-toggle icon lobby-voice-toggle ${voiceConnected ? "active" : ""}`}
-          onClick={toggleVoice}
-          aria-label={voiceConnected ? "Leave lobby voice" : "Join lobby voice"}
-        >
-          <span>{voiceConnected ? "🔊" : "🎙"}</span>
-        </button>
       </div>
       <div className="lobby-body">
         <div>
@@ -781,6 +830,102 @@ const LobbyView = ({
   );
 };
 
+const VoiceControlButton = ({
+  connected,
+  connecting,
+  canUseVoice,
+  toggle,
+  stageLabel
+}: {
+  connected: boolean;
+  connecting: boolean;
+  canUseVoice: boolean;
+  toggle: () => void;
+  stageLabel: string;
+}) => {
+  const statusText = connecting ? "Connecting..." : connected ? "Voice live" : "Voice off";
+  const helperText = !canUseVoice
+    ? "Join the session to speak."
+    : connecting
+      ? "Hang tight..."
+      : connected
+        ? `Chatting in ${stageLabel}.`
+        : "Tap to talk with everyone.";
+  return (
+    <button
+      type="button"
+      className={`voice-toggle voice-toggle-pill ${connected ? "active" : ""}`}
+      onClick={toggle}
+      disabled={!canUseVoice || connecting}
+      aria-busy={connecting}
+      aria-label={connected ? "Leave voice chat" : "Join voice chat"}
+    >
+      <span className="voice-icon">{connecting ? "..." : connected ? "??" : "??"}</span>
+      <span className="voice-copy">
+        <strong>{statusText}</strong>
+        <small>{helperText}</small>
+      </span>
+    </button>
+  );
+};
+
+const VoiceAudioLayer = ({ streams }: { streams: VoiceStream[] }) => {
+  if (!streams.length) {
+    return null;
+  }
+  return (
+    <div className="voice-audio-layer" aria-hidden>
+      {streams.map((entry) => (
+        <RemoteVoiceAudio key={entry.peerId} stream={entry.stream} />
+      ))}
+    </div>
+  );
+};
+
+const RemoteVoiceAudio = ({ stream }: { stream: MediaStream }) => {
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+  useEffect(() => {
+    if (!audioRef.current) return;
+    audioRef.current.srcObject = stream;
+  }, [stream]);
+  return <audio ref={audioRef} autoPlay playsInline />;
+};
+
+const SoccerFormationBoard = ({
+  formationCode,
+  players,
+  compact = false
+}: {
+  formationCode: string;
+  players: TaggedRosterEntry[];
+  compact?: boolean;
+}) => {
+  const formation = getFormationByCode(formationCode);
+  if (!formation) return null;
+  const playerBySlot = new Map(
+    players
+      .filter((entry) => entry.slotId)
+      .map((entry) => [entry.slotId as string, entry])
+  );
+  return (
+    <div className={`soccer-pitch ${compact ? "compact" : ""}`}>
+      {formation.slots.map((slot) => {
+        const player = playerBySlot.get(slot.id);
+        return (
+          <div
+            key={slot.id}
+            className={`soccer-slot ${player ? "filled" : ""}`}
+            style={{ left: `${slot.x}%`, top: `${slot.y}%` }}
+          >
+            <span className="label">{slot.label}</span>
+            {player && <strong>{player.playerName}</strong>}
+          </div>
+        );
+      })}
+    </div>
+  );
+};
+
 const InfoStat = ({ label, value }: { label: string; value: string }) => (
   <div className="info-card">
     <span>{label}</span>
@@ -808,7 +953,6 @@ const LiveAuctionBoard = ({
       ? Math.max(activeSlot.basePrice, (auction.activeBid?.amount ?? activeSlot.basePrice) + 1)
       : 0
   );
-  const [voiceConnected, setVoiceConnected] = useState(false);
 
   useEffect(() => {
     if (!activeSlot) return;
@@ -888,11 +1032,6 @@ const LiveAuctionBoard = ({
     } catch (error) {
       notify("error", (error as Error).message);
     }
-  };
-
-  const toggleVoiceChannel = () => {
-    setVoiceConnected((prev) => !prev);
-    notify("success", !voiceConnected ? "Joined voice chat." : "Left voice chat.");
   };
 
   const handlePauseToggle = async () => {
@@ -1007,13 +1146,6 @@ const LiveAuctionBoard = ({
             {isManual && <p className="muted-label">Re-auctioning an unsold player</p>}
           </div>
           <div className="deck-meta">
-            <button
-              className={`voice-toggle icon ${voiceConnected ? "active" : ""}`}
-              onClick={toggleVoiceChannel}
-              aria-label={voiceConnected ? "Leave voice" : "Join voice"}
-            >
-              <span>{voiceConnected ? "🔊" : "🎙"}</span>
-            </button>
             <div className="timer-display">
               <span>Time left</span>
               <strong>{timerLabel}</strong>
@@ -1090,7 +1222,7 @@ const LiveAuctionBoard = ({
           <div className="team-card__header">
             <h3>My Team</h3>
             <span>
-              {formatCurrency(selfParticipant?.budgetRemaining ?? 0)} left ·{" "}
+              {formatCurrency(selfParticipant?.budgetRemaining ?? 0)} left ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â·{" "}
               {(selfParticipant?.playersNeeded ?? auction.playersPerTeam)} slots
             </span>
           </div>
@@ -1187,6 +1319,8 @@ const TeamConfirmationPanel = ({
 }) => {
   const roster = selfParticipant?.roster ?? [];
   const finalRoster = selfParticipant?.finalRoster ?? [];
+  const finalSport = (selfParticipant?.finalRosterSport ?? "cricket") as SportMode;
+  const finalFormation = selfParticipant?.finalRosterFormation ?? null;
   const limit = auction.playersPerTeam;
   const rosterWithKeys = useMemo(
     () => roster.map((player, index) => ({ ...player, key: `${player.playerName}-${index}` })),
@@ -1196,25 +1330,13 @@ const TeamConfirmationPanel = ({
     () => rosterWithKeys.slice(0, limit).map((player) => player.key),
     [rosterWithKeys, limit]
   );
+
+  const [sport, setSport] = useState<SportMode>(finalRoster.length ? finalSport : "cricket");
   const [selectedKeys, setSelectedKeys] = useState<string[]>(initialSelection);
   const [tagMap, setTagMap] = useState<Record<string, string>>({});
-
   useEffect(() => {
     setSelectedKeys(initialSelection);
   }, [initialSelection.join("|")]);
-
-  const toggleSelection = (key: string) => {
-    setSelectedKeys((prev) => {
-      if (prev.includes(key)) {
-        return prev.filter((item) => item !== key);
-      }
-      if (prev.length >= limit) {
-        notify("error", `You already picked ${limit} players.`);
-        return prev;
-      }
-      return [...prev, key];
-    });
-  };
 
   const [draggingKey, setDraggingKey] = useState<string | null>(null);
   const handleLineupDragStart = (key: string) => setDraggingKey(key);
@@ -1236,31 +1358,148 @@ const TeamConfirmationPanel = ({
   };
   const handleLineupDragEnd = () => setDraggingKey(null);
 
+  const toggleSelection = (key: string) => {
+    setSelectedKeys((prev) => {
+      if (prev.includes(key)) {
+        return prev.filter((item) => item !== key);
+      }
+      if (prev.length >= limit) {
+        notify("error", `You already picked ${limit} players.`);
+        return prev;
+      }
+      return [...prev, key];
+    });
+  };
+
   const handleTagChange = (key: string, value: string) => {
     setTagMap((prev) => ({ ...prev, [key]: value.slice(0, 3).toUpperCase() }));
   };
 
+  const buildAssignmentMap = useCallback(
+    (code: string, prev?: Record<string, string | null>) => {
+      const formation = getFormationByCode(code);
+      const next: Record<string, string | null> = {};
+      (formation?.slots ?? []).forEach((slot) => {
+        next[slot.id] = prev?.[slot.id] ?? null;
+      });
+      return next;
+    },
+    []
+  );
+
+  const defaultFormationCode =
+    finalSport === "soccer" && finalFormation ? finalFormation.code : SOCCER_FORMATIONS[0].code;
+  const [soccerFormation, setSoccerFormation] = useState(defaultFormationCode);
+  const [soccerAssignments, setSoccerAssignments] = useState<Record<string, string | null>>(() =>
+    buildAssignmentMap(defaultFormationCode)
+  );
+  useEffect(() => {
+    setSoccerAssignments((prev) => buildAssignmentMap(soccerFormation, prev));
+  }, [soccerFormation, buildAssignmentMap]);
+
+  const handleSlotAssignment = (slotId: string, playerKey: string) => {
+    setSoccerAssignments((prev) => {
+      const next = { ...prev };
+      const nextValue = playerKey || null;
+      if (nextValue) {
+        Object.entries(next).forEach(([key, value]) => {
+          if (key !== slotId && value === nextValue) {
+            next[key] = null;
+          }
+        });
+      }
+      next[slotId] = nextValue;
+      return next;
+    });
+  };
+
+  const soccerFormationDef = getFormationByCode(soccerFormation);
+  const soccerSlots = soccerFormationDef?.slots ?? [];
+  const soccerAssignmentsList = useMemo(() => {
+    if (!soccerFormationDef) return [];
+    return soccerFormationDef.slots
+      .map((slot) => {
+        const playerKey = soccerAssignments[slot.id];
+        if (!playerKey) return null;
+        const player = rosterWithKeys.find((entry) => entry.key === playerKey);
+        if (!player) return null;
+        return {
+          playerName: player.playerName,
+          categoryLabel: player.categoryLabel,
+          price: player.price,
+          tag: slot.label,
+          slotId: slot.id,
+          slotLabel: slot.label
+        };
+      })
+      .filter(Boolean) as TaggedRosterEntry[];
+  }, [rosterWithKeys, soccerAssignments, soccerFormationDef]);
+
+  const soccerReady = soccerSlots.every((slot) => Boolean(soccerAssignments[slot.id]));
+  const soccerShortage = rosterWithKeys.length < soccerSlots.length;
+
   const handleSubmit = async () => {
     if (!selfParticipant) return;
-    if (selectedKeys.length !== limit) {
+    if (sport === "soccer") {
+      if (!soccerFormationDef) {
+        notify("error", "Select a formation.");
+        return;
+      }
+      if (soccerShortage) {
+        notify("error", `You need ${soccerSlots.length} players for this formation.`);
+        return;
+      }
+      if (!soccerReady) {
+        notify("error", "Assign every position before submitting.");
+        return;
+      }
+    } else if (selectedKeys.length !== limit) {
       notify("error", `Select exactly ${limit} players before submitting.`);
       return;
     }
-    const lineup = selectedKeys
-      .map((key) => rosterWithKeys.find((player) => player.key === key))
-      .filter(Boolean)
-      .map((player) => ({
-        playerName: player!.playerName,
-        categoryLabel: player!.categoryLabel,
-        price: player!.price,
-        tag: tagMap[player!.key] ?? ""
-      }));
+
+    let payload: TaggedRosterEntry[] = [];
+    let formationCode: string | undefined;
+    let formationLabel: string | undefined;
+
+    if (sport === "soccer" && soccerFormationDef) {
+      payload = soccerFormationDef.slots.map((slot) => {
+        const playerKey = soccerAssignments[slot.id];
+        const player = rosterWithKeys.find((entry) => entry.key === playerKey);
+        if (!player) {
+          throw new Error("Missing player assignment.");
+        }
+        return {
+          playerName: player.playerName,
+          categoryLabel: player.categoryLabel,
+          price: player.price,
+          tag: slot.label,
+          slotId: slot.id,
+          slotLabel: slot.label
+        };
+      });
+      formationCode = soccerFormationDef.code;
+      formationLabel = soccerFormationDef.label;
+    } else {
+      payload = selectedKeys
+        .map((key) => rosterWithKeys.find((player) => player.key === key))
+        .filter(Boolean)
+        .map((player, index) => ({
+          playerName: player!.playerName,
+          categoryLabel: player!.categoryLabel,
+          price: player!.price,
+          tag: tagMap[player!.key] ?? ""
+        }));
+    }
 
     try {
       await submitTeam({
         auctionId: auction.id,
         clientId: selfParticipant.id,
-        finalRoster: lineup
+        finalRoster: payload,
+        sport,
+        formationCode,
+        formationLabel
       });
       notify("success", "Final squad locked in.");
     } catch (error) {
@@ -1270,11 +1509,24 @@ const TeamConfirmationPanel = ({
 
   const otherPlayers = participants.filter((player) => player.id !== selfParticipant?.id);
 
-  return (
-    <section className="panel-card">
-      {finalRoster.length > 0 ? (
-        <>
-          <h2>Your final squad</h2>
+  if (finalRoster.length > 0) {
+    const submittedSoccer = finalSport === "soccer" && finalFormation;
+    return (
+      <section className="panel-card">
+        <h2>Your final squad</h2>
+        {submittedSoccer ? (
+          <>
+            <p className="muted-label">{finalFormation?.label}</p>
+            <SoccerFormationBoard formationCode={finalFormation!.code} players={finalRoster} />
+            <ul className="mini-roster">
+              {finalRoster.map((player, index) => (
+                <li key={`${player.playerName}-${index}`}>
+                  {player.slotLabel ?? player.tag ?? `#${index + 1}`} - {player.playerName}
+                </li>
+              ))}
+            </ul>
+          </>
+        ) : (
           <ol className="ranking-list">
             {finalRoster.map((player, index) => (
               <li key={`${player.playerName}-${index}`}>
@@ -1290,82 +1542,193 @@ const TeamConfirmationPanel = ({
               </li>
             ))}
           </ol>
-        </>
+        )}
+        <div className="roster-card" style={{ marginTop: "1.5rem" }}>
+          <h3>Others</h3>
+          <ul className="participant-list">
+            {otherPlayers.map((player) => (
+              <li key={player.id}>
+                <div>
+                  <strong>{player.name}</strong>
+                  <p>
+                    {player.finalRoster?.length ?? player.roster.length} picks{" "}
+                    {player.hasSubmittedTeam ? "(Submitted)" : ""}
+                  </p>
+                </div>
+                <span>
+                  {player.hasSubmittedTeam
+                    ? player.finalRosterSport === "soccer"
+                      ? player.finalRosterFormation?.label ?? "Soccer"
+                      : "Cricket"
+                    : "Pending"}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      </section>
+    );
+  }
+
+  return (
+    <section className="panel-card">
+      <h2>Lock your final {limit}</h2>
+      <p className="muted-label">Switch between cricket order or soccer formation.</p>
+      <div className="sport-toggle">
+        <button
+          className={`btn ghost ${sport === "cricket" ? "active" : ""}`}
+          onClick={() => setSport("cricket")}
+        >
+          Cricket
+        </button>
+        <button
+          className={`btn ghost ${sport === "soccer" ? "active" : ""}`}
+          onClick={() => setSport("soccer")}
+        >
+          Soccer
+        </button>
+      </div>
+      {sport === "cricket" ? (
+        <div className="roster-grid">
+          <div>
+            <h3>Available</h3>
+            <p className="muted-label">
+              {selectedKeys.length}/{limit} selected
+            </p>
+            <ul className="participant-list lineup-options">
+              {rosterWithKeys.map((player) => {
+                const checked = selectedKeys.includes(player.key);
+                const disabled = !checked && selectedKeys.length >= limit;
+                return (
+                  <li key={player.key}>
+                    <label>
+                      <input
+                        type="checkbox"
+                        checked={checked}
+                        disabled={disabled}
+                        onChange={() => toggleSelection(player.key)}
+                      />
+                      <span>
+                        {player.playerName} - {formatCurrency(player.price)}
+                      </span>
+                    </label>
+                  </li>
+                );
+              })}
+            </ul>
+          </div>
+          <div>
+            <h3>Selected lineup</h3>
+            {selectedKeys.length === 0 && (
+              <p className="muted-label">Pick players to build your lineup.</p>
+            )}
+            <ol className="ranking-list selected-lineup">
+              {selectedKeys.map((key, index) => {
+                const player = rosterWithKeys.find((item) => item.key === key);
+                if (!player) return null;
+                return (
+                  <li
+                    key={key}
+                    draggable
+                    onDragStart={() => handleLineupDragStart(key)}
+                    onDragOver={handleLineupDragOver}
+                    onDrop={() => handleLineupDrop(key)}
+                    onDragEnd={handleLineupDragEnd}
+                    className={draggingKey === key ? "dragging" : ""}
+                  >
+                    <div>
+                      <strong>
+                        #{index + 1} {player.playerName}
+                      </strong>
+                      <p className="lineup-meta">{formatCurrency(player.price)}</p>
+                    </div>
+                    <div className="lineup-actions">
+                      <input
+                        type="text"
+                        maxLength={3}
+                        value={tagMap[key] ?? ""}
+                        onChange={(event) => handleTagChange(key, event.target.value)}
+                        placeholder="TAG"
+                      />
+                    </div>
+                  </li>
+                );
+              })}
+            </ol>
+          </div>
+        </div>
       ) : (
-        <>
-          <h2>Choose your final {limit}</h2>
-          <p>Select players, set 3-letter tags, and reorder them before submitting.</p>
-          <div className="roster-grid">
-            <div>
-              <h3>Available</h3>
-              <p className="muted-label">
-                {selectedKeys.length}/{limit} selected
+        <div className="soccer-builder">
+          <div className="formation-select">
+            <label htmlFor="formation-select">Formation</label>
+            <select
+              id="formation-select"
+              value={soccerFormation}
+              onChange={(event) => setSoccerFormation(event.target.value)}
+            >
+              {SOCCER_FORMATIONS.map((formation) => (
+                <option key={formation.code} value={formation.code}>
+                  {formation.label}
+                </option>
+              ))}
+            </select>
+            {soccerShortage && (
+              <p className="muted-label warning">
+                Need {soccerSlots.length} players to fill this formation. You currently have{" "}
+                {rosterWithKeys.length}.
               </p>
-              <ul className="participant-list lineup-options">
-                {rosterWithKeys.map((player) => {
-                  const checked = selectedKeys.includes(player.key);
-                  const disabled = !checked && selectedKeys.length >= limit;
-                  return (
-                    <li key={player.key}>
-                      <label>
-                        <input
-                          type="checkbox"
-                          checked={checked}
-                          disabled={disabled}
-                          onChange={() => toggleSelection(player.key)}
-                        />
-                        <span>
-                          {player.playerName} - {formatCurrency(player.price)}
-                        </span>
-                      </label>
-                    </li>
-                  );
-                })}
+            )}
+          </div>
+          <div className="soccer-layout">
+            <SoccerFormationBoard formationCode={soccerFormation} players={soccerAssignmentsList} />
+            <div className="formation-editor">
+              <ul>
+                {soccerSlots.map((slot) => (
+                  <li key={slot.id}>
+                    <span>{slot.label}</span>
+                    <select
+                      value={soccerAssignments[slot.id] ?? ""}
+                      onChange={(event) => handleSlotAssignment(slot.id, event.target.value)}
+                    >
+                      <option value="">Unassigned</option>
+                      {rosterWithKeys.map((player) => {
+                        const assignedElsewhere =
+                          soccerAssignments[slot.id] !== player.key &&
+                          Object.values(soccerAssignments).includes(player.key);
+                        return (
+                          <option key={player.key} value={player.key} disabled={assignedElsewhere}>
+                            {player.playerName} - {formatCurrency(player.price)}
+                          </option>
+                        );
+                      })}
+                    </select>
+                  </li>
+                ))}
               </ul>
             </div>
-            <div>
-              <h3>Selected lineup</h3>
-              {selectedKeys.length === 0 && <p className="muted-label">Pick players to build your lineup.</p>}
-              <ol className="ranking-list selected-lineup">
-                {selectedKeys.map((key, index) => {
-                  const player = rosterWithKeys.find((item) => item.key === key);
-                  if (!player) return null;
-                  return (
-                    <li
-                      key={key}
-                      draggable
-                      onDragStart={() => handleLineupDragStart(key)}
-                      onDragOver={handleLineupDragOver}
-                      onDrop={() => handleLineupDrop(key)}
-                      onDragEnd={handleLineupDragEnd}
-                      className={draggingKey === key ? "dragging" : ""}
-                    >
-                      <div>
-                        <strong>
-                          #{index + 1} {player.playerName}
-                        </strong>
-                        <p className="lineup-meta">{formatCurrency(player.price)}</p>
-                      </div>
-                      <div className="lineup-actions">
-                        <input
-                          type="text"
-                          maxLength={3}
-                          value={tagMap[key] ?? ""}
-                          onChange={(event) => handleTagChange(key, event.target.value)}
-                          placeholder="TAG"
-                        />
-                      </div>
-                    </li>
-                  );
-                })}
-              </ol>
-              <button className="btn accent" disabled={selfParticipant?.hasSubmittedTeam} onClick={handleSubmit}>
-                {selfParticipant?.hasSubmittedTeam ? "Submitted" : "Submit team"}
-              </button>
-            </div>
           </div>
-        </>
+          <div className="player-pool">
+            <h3>Player pool</h3>
+            <ul>
+              {rosterWithKeys.map((player) => {
+                const assigned = Object.values(soccerAssignments).includes(player.key);
+                return (
+                  <li key={player.key} className={assigned ? "assigned" : ""}>
+                    {player.playerName} - {formatCurrency(player.price)} {assigned ? "(Placed)" : ""}
+                  </li>
+                );
+              })}
+            </ul>
+          </div>
+        </div>
       )}
+      <button
+        className="btn accent"
+        disabled={selfParticipant?.hasSubmittedTeam}
+        onClick={handleSubmit}
+      >
+        {selfParticipant?.hasSubmittedTeam ? "Submitted" : "Submit team"}
+      </button>
       <div className="roster-card" style={{ marginTop: "1.5rem" }}>
         <h3>Others</h3>
         <ul className="participant-list">
@@ -1378,7 +1741,13 @@ const TeamConfirmationPanel = ({
                   {player.hasSubmittedTeam ? "(Submitted)" : ""}
                 </p>
               </div>
-              <span>{player.hasSubmittedTeam ? "Locked" : "Pending"}</span>
+              <span>
+                {player.hasSubmittedTeam
+                  ? player.finalRosterSport === "soccer"
+                    ? player.finalRosterFormation?.label ?? "Soccer"
+                    : "Cricket"
+                  : "Pending"}
+              </span>
             </li>
           ))}
         </ul>
@@ -1386,6 +1755,7 @@ const TeamConfirmationPanel = ({
     </section>
   );
 };
+
 
 const RankingPanel = ({
   auction,
@@ -1439,6 +1809,9 @@ const RankingPanel = ({
           if (!target) return null;
           const lineup =
             target.finalRoster && target.finalRoster.length ? target.finalRoster : target.roster;
+          const showFormation =
+            target.finalRosterSport === "soccer" &&
+            Boolean(target.finalRosterFormation?.code && target.finalRoster?.length);
           return (
             <li key={participantId}>
               <div>
@@ -1446,11 +1819,25 @@ const RankingPanel = ({
                   #{index + 1} {target.name}
                 </strong>
                 <p>{formatCurrency(target.budgetRemaining)} left</p>
+                {showFormation && target.finalRoster && target.finalRosterFormation && (
+                  <div className="ranking-formation">
+                    <SoccerFormationBoard
+                      formationCode={target.finalRosterFormation.code}
+                      players={target.finalRoster}
+                      compact
+                    />
+                  </div>
+                )}
                 <ul className="mini-roster">
                   {lineup.map((player, idx) => {
+                    const slotLabel =
+                      target.finalRosterSport === "soccer" && "slotLabel" in player && player.slotLabel
+                        ? `${player.slotLabel} - `
+                        : "";
                     const tag = "tag" in player && player.tag ? ` (${player.tag})` : "";
                     return (
                       <li key={`${player.playerName}-${idx}`}>
+                        {slotLabel}
                         {player.playerName}
                         {tag} - Cat {player.categoryLabel}
                       </li>
@@ -1537,23 +1924,37 @@ const ResultsBoard = ({
         {participants.map((player) => {
           const lineup =
             player.finalRoster && player.finalRoster.length ? player.finalRoster : player.roster;
+          const showFormation =
+            player.finalRosterSport === "soccer" &&
+            Boolean(player.finalRosterFormation?.code && player.finalRoster?.length);
           return (
             <div key={player.id} className="roster-card">
               <h4>{player.name}</h4>
+              {showFormation && player.finalRoster && player.finalRosterFormation && (
+                <SoccerFormationBoard
+                  formationCode={player.finalRosterFormation.code}
+                  players={player.finalRoster}
+                />
+              )}
               <ul>
                 {lineup.map((entry, index) => {
+                  const slotLabel =
+                    player.finalRosterSport === "soccer" && "slotLabel" in entry && entry.slotLabel
+                      ? `${entry.slotLabel} - `
+                      : "";
                   const tag = "tag" in entry && entry.tag ? ` (${entry.tag})` : "";
                   return (
                     <li key={`${entry.playerName}-${index}`}>
+                      {slotLabel}
                       {entry.playerName}
                       {tag} - {formatCurrency(entry.price)}
                     </li>
                   );
                 })}
-             </ul>
-           </div>
-         );
-       })}
+              </ul>
+            </div>
+          );
+        })}
       </div>
     </section>
   );
@@ -1623,3 +2024,4 @@ const useAdminAutomation = (
 };
 
 export default App;
+

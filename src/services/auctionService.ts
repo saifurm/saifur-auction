@@ -25,7 +25,7 @@ import type {
 import { buildPlayerQueue } from "../utils/players";
 
 const START_TIMER_MS = 60000;
-const ACTIVE_BID_TIMER_MS = 30000;
+const ACTIVE_BID_TIMER_MS = 15000;
 
 const getActiveSlot = (auction: Auction, queue: PlayerSlot[]) => {
   if (auction.manualPlayer) {
@@ -538,17 +538,28 @@ interface SubmitTeamInput {
   auctionId: string;
   clientId: string;
   finalRoster: TaggedRosterEntry[];
+  sport: "cricket" | "soccer";
+  formationCode?: string;
+  formationLabel?: string;
 }
 
 export const submitTeam = async (input: SubmitTeamInput) => {
-  const { auctionId, clientId, finalRoster } = input;
+  const { auctionId, clientId, finalRoster, sport, formationCode, formationLabel } = input;
   const participantRef = doc(
     collection(doc(db, "auctions", auctionId), "participants"),
     clientId
   );
   await updateDoc(participantRef, {
     hasSubmittedTeam: true,
-    finalRoster
+    finalRoster,
+    finalRosterSport: sport,
+    finalRosterFormation:
+      sport === "soccer"
+        ? {
+            code: formationCode ?? "custom",
+            label: formationLabel ?? formationCode ?? "Custom formation"
+          }
+        : null
   });
 };
 
