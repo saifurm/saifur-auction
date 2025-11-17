@@ -263,6 +263,12 @@ fieldset {
   gap: 1rem;
 }
 
+.category-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 1rem;
+}
+
 .category-card {
   border: 1px solid var(--border-color);
   border-radius: 18px;
@@ -275,6 +281,17 @@ fieldset {
   justify-content: space-between;
   gap: 1rem;
   flex-wrap: wrap;
+}
+
+.category-pill {
+  display: inline-flex;
+  width: 36px;
+  height: 36px;
+  border-radius: 999px;
+  align-items: center;
+  justify-content: center;
+  background: rgba(255, 255, 255, 0.08);
+  font-weight: 600;
 }
 
 .category-meta {
@@ -324,6 +341,16 @@ fieldset {
   gap: 1rem;
   padding: 1rem;
   border-bottom: 1px solid var(--border-color);
+}
+
+.public-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.public-actions .btn {
+  width: 100%;
 }
 
 .participant-list.lobby-list li {
@@ -776,6 +803,18 @@ fieldset {
 .voice-toggle:disabled {
   opacity: 0.5;
   cursor: not-allowed;
+}
+
+.view-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  padding: 0.15rem 0.75rem;
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
 }
 
 .voice-audio-layer {

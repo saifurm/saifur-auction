@@ -61,6 +61,7 @@ export interface Auction {
   currentPlayerIndex: number;
   countdownEndsAt?: Timestamp | null;
   countdownDuration?: number;
+  viewCount?: number;
   activeBid?: ActiveBid | null;
   skipVotes?: string[];
   isPaused?: boolean;

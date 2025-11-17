@@ -24,12 +24,20 @@ interface VoiceChannelOptions {
   auctionId: string | null;
   clientId: string | null;
   scope: VoiceScope;
+  listenOnly?: boolean;
+  autoJoin?: boolean;
 }
 
 const buildPeerId = (auctionId: string, scope: VoiceScope, clientId: string) =>
   `voice-${auctionId}-${scope}-${clientId}`;
 
-export const useVoiceChannel = ({ auctionId, clientId, scope }: VoiceChannelOptions) => {
+export const useVoiceChannel = ({
+  auctionId,
+  clientId,
+  scope,
+  listenOnly = false,
+  autoJoin = false
+}: VoiceChannelOptions) => {
   const [connected, setConnected] = useState(false);
   const [connecting, setConnecting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -126,7 +134,7 @@ export const useVoiceChannel = ({ auctionId, clientId, scope }: VoiceChannelOpti
       return;
     }
     if (typeof window === "undefined") return;
-    if (!navigator?.mediaDevices?.getUserMedia) {
+    if (!listenOnly && !navigator?.mediaDevices?.getUserMedia) {
       setError("Browser does not support microphone access.");
       return;
     }
@@ -135,8 +143,12 @@ export const useVoiceChannel = ({ auctionId, clientId, scope }: VoiceChannelOpti
     setError(null);
 
     try {
-      const localStream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      streamRef.current = localStream;
+      if (!listenOnly) {
+        const localStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        streamRef.current = localStream;
+      } else {
+        streamRef.current = null;
+      }
 
       const peerId = buildPeerId(auctionId, scope, clientId);
       const peer = new Peer(peerId);
@@ -153,12 +165,11 @@ export const useVoiceChannel = ({ auctionId, clientId, scope }: VoiceChannelOpti
       });
 
       peer.on("call", (call) => {
-        if (!streamRef.current) return;
         if (callMapRef.current.has(call.peer)) {
           call.close();
           return;
         }
-        call.answer(streamRef.current);
+        call.answer(streamRef.current ?? undefined);
         bindCall(call, call.peer);
       });
 
@@ -170,10 +181,12 @@ export const useVoiceChannel = ({ auctionId, clientId, scope }: VoiceChannelOpti
         peerId,
         clientId,
         scope,
+        listenOnly,
         joinedAt: serverTimestamp()
       });
 
       const startCall = (targetPeerId: string) => {
+        if (listenOnly) return;
         if (!peerRef.current || !streamRef.current) return;
         if (targetPeerId === peerId) return;
         if (callMapRef.current.has(targetPeerId)) return;
@@ -186,7 +199,10 @@ export const useVoiceChannel = ({ auctionId, clientId, scope }: VoiceChannelOpti
         query(voiceCollection, where("scope", "==", scope)),
         (snapshot) => {
           const peers = snapshot
-            .docs.map((docSnap) => docSnap.data() as { peerId: string; clientId: string })
+            .docs.map(
+              (docSnap) =>
+                docSnap.data() as { peerId: string; clientId: string; listenOnly?: boolean }
+            )
             .filter((entry) => entry.clientId !== clientId);
 
           const activePeerIds = new Set(peers.map((entry) => entry.peerId));
@@ -224,7 +240,8 @@ export const useVoiceChannel = ({ auctionId, clientId, scope }: VoiceChannelOpti
     removePresenceDoc,
     removeRemoteStream,
     scope,
-    teardownPeer
+    teardownPeer,
+    listenOnly
   ]);
 
   useEffect(() => {
@@ -238,6 +255,12 @@ export const useVoiceChannel = ({ auctionId, clientId, scope }: VoiceChannelOpti
       void leaveChannel();
     }
   }, [auctionId, connected, leaveChannel]);
+
+  useEffect(() => {
+    if (!autoJoin) return;
+    if (connected || connecting) return;
+    void joinChannel();
+  }, [autoJoin, connected, connecting, joinChannel]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;

@@ -4,6 +4,7 @@ import {
   doc,
   getDoc,
   getDocs,
+  increment,
   limit,
   query,
   runTransaction,
@@ -114,6 +115,7 @@ export const createAuction = async (input: CreateAuctionInput) => {
     manualSourceId: null,
     finalizationOpen: false,
     totalPlayers,
+    viewCount: 0,
     completedPlayers: [],
     results: []
   });
@@ -723,6 +725,14 @@ export const markAuctionAsRanking = async (auctionId: string) => {
   await updateDoc(doc(db, "auctions", auctionId), {
     status: "ranking",
     finalizationOpen: false,
+    updatedAt: serverTimestamp()
+  });
+};
+
+export const incrementViewCount = async (auctionId: string) => {
+  const auctionRef = doc(db, "auctions", auctionId);
+  await updateDoc(auctionRef, {
+    viewCount: increment(1),
     updatedAt: serverTimestamp()
   });
 };

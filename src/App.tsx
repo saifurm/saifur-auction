@@ -1,4 +1,4 @@
-import {
+﻿import {
   useCallback,
   useEffect,
   useMemo,
@@ -34,6 +34,7 @@ import {
   markAuctionAsRanking,
   pauseAuction,
   placeBid,
+  incrementViewCount,
   relistUnsoldPlayer,
   resumeAuction,
   skipPlayer,
@@ -149,9 +150,22 @@ const App = () => {
   }, [toast]);
 
   useAdminAutomation(auction, participants, selfParticipant, notify);
+  useEffect(() => {
+    if (!auction || auction.visibility !== "public") return;
+    if (typeof window === "undefined") return;
+    const key = `saifur-auction:view:${auction.id}`;
+    if (window.localStorage.getItem(key)) return;
+    window.localStorage.setItem(key, "1");
+    incrementViewCount(auction.id).catch(() => {
+      window.localStorage.removeItem(key);
+    });
+  }, [auction?.id, auction?.visibility]);
+
+  const viewingOnly = Boolean(auction && auction.visibility === "public" && !selfParticipant);
 
   const voiceCapableViews: ViewMode[] = ["lobby", "auction", "post", "ranking", "results"];
   const voiceEnabled = Boolean(auction && voiceCapableViews.includes(view));
+  const listenOnlyMode = Boolean(viewingOnly && auction && auction.visibility === "public");
   const {
     connected: voiceConnected,
     connecting: voiceConnecting,
@@ -160,25 +174,35 @@ const App = () => {
     toggle: toggleVoice,
     leave: leaveVoice
   } = useVoiceChannel({
-    auctionId: voiceEnabled && auction ? auction.id : null,
+    auctionId: (voiceEnabled || listenOnlyMode) && auction ? auction.id : null,
     clientId: clientId || null,
-    scope: auction?.status === "lobby" ? "lobby" : "live"
+    scope: auction?.status === "lobby" ? "lobby" : "live",
+    listenOnly: listenOnlyMode,
+    autoJoin: false
   });
   const lastVoiceStateRef = useRef(voiceConnected);
   useEffect(() => {
-    if (!voiceEnabled) {
+    const shouldTrack = voiceEnabled || listenOnlyMode;
+    if (!shouldTrack) {
       lastVoiceStateRef.current = voiceConnected;
       return;
     }
     if (voiceConnected !== lastVoiceStateRef.current) {
-      const isLobby = auction?.status === "lobby";
-      notify("success", voiceConnected ? (isLobby ? "Joined lobby voice chat." : "Joined voice chat.") : "Left voice chat.");
+      if (listenOnlyMode) {
+        notify("success", voiceConnected ? "Listening to live voice." : "Stopped listening.");
+      } else {
+        const isLobby = auction?.status === "lobby";
+        notify(
+          "success",
+          voiceConnected ? (isLobby ? "Joined lobby voice chat." : "Joined voice chat.") : "Left voice chat."
+        );
+      }
       lastVoiceStateRef.current = voiceConnected;
     }
-  }, [voiceConnected, voiceEnabled, notify, auction?.status]);
+  }, [voiceConnected, voiceEnabled, listenOnlyMode, notify, auction?.status]);
   const voiceErrorRef = useRef<string | null>(null);
   useEffect(() => {
-    if (!voiceEnabled) {
+    if (!voiceEnabled && !listenOnlyMode) {
       voiceErrorRef.current = voiceError;
       return;
     }
@@ -188,11 +212,12 @@ const App = () => {
     }
   }, [voiceError, notify, voiceEnabled]);
   useEffect(() => {
-    if (!selfParticipant && voiceConnected) {
+    if (!selfParticipant && !listenOnlyMode && voiceConnected) {
       void leaveVoice();
     }
-  }, [selfParticipant, voiceConnected, leaveVoice]);
+  }, [selfParticipant, listenOnlyMode, voiceConnected, leaveVoice]);
   const canUseVoice = Boolean(selfParticipant && voiceEnabled);
+  const listenOnlyAvailable = Boolean(listenOnlyMode && voiceEnabled);
   const voiceStageLabel = auction?.status === "lobby" ? "the lobby" : "the floor";
 
   const handleCreated = (newAuctionId: string) => {
@@ -201,6 +226,10 @@ const App = () => {
   };
 
   const handleJoined = (targetAuctionId: string) => {
+    setActiveAuctionId(targetAuctionId);
+    setView("lobby");
+  };
+  const handleWatch = (targetAuctionId: string) => {
     setActiveAuctionId(targetAuctionId);
     setView("lobby");
   };
@@ -252,6 +281,7 @@ const App = () => {
             publicAuctions={publicAuctions}
             onBack={() => setView("landing")}
             onJoined={handleJoined}
+            onWatch={handleWatch}
             notify={notify}
           />
         );
@@ -319,13 +349,23 @@ const App = () => {
           <p className="hero-subtitle">The night begins when the auction starts.</p>
         </div>
         <div className="header-actions">
-          {voiceEnabled && (
+          {canUseVoice && (
             <VoiceControlButton
               connected={voiceConnected}
               connecting={voiceConnecting}
               canUseVoice={canUseVoice}
               toggle={toggleVoice}
               stageLabel={voiceStageLabel}
+            />
+          )}
+          {!canUseVoice && listenOnlyAvailable && (
+            <VoiceControlButton
+              connected={voiceConnected}
+              connecting={voiceConnecting}
+              canUseVoice
+              toggle={toggleVoice}
+              stageLabel={voiceStageLabel}
+              mode="listen"
             />
           )}
           {auction && (
@@ -336,6 +376,8 @@ const App = () => {
                   {auction.name} -{" "}
                   <span className="status-pill">{auction.status.toUpperCase()}</span>
                 </p>
+                {auction.visibility === "public" && <ViewPill count={auction.viewCount ?? 0} />}
+                {viewingOnly && <p className="chip-label">Viewing only</p>}
               </div>
               <button className="btn text" onClick={handleLeaveSession}>
                 Leave
@@ -346,7 +388,7 @@ const App = () => {
       </header>
       <main className="stage-panel">{loading ? <p>Loading...</p> : renderView()}</main>
       <VoiceAudioLayer streams={voiceStreams} />
-      <footer className="app-footer">ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â© Saifur Rahman Mehedi</footer>
+      <footer className="app-footer">� Saifur Rahman Mehedi</footer>
     </div>
   );
 };
@@ -594,41 +636,43 @@ const CreateAuctionForm = ({
           <p className="muted-label">
             Paste names separated by commas or new lines. We'll keep the first five categories (A-E).
           </p>
-          {categories.map((category) => (
-            <div key={category.id} className="category-card">
-              <div className="category-header">
-                <strong>Category {category.label}</strong>
-                <div className="category-meta">
-                  <label>
-                    Base price (USD)
-                    <input
-                      type="number"
-                      min={1}
-                      value={category.basePrice}
-                      onChange={(event) =>
-                        updateCategory(category.id, {
-                          basePrice: Number(event.target.value)
-                        })
-                      }
-                    />
-                  </label>
-                  <span className="player-count">
-                    {parsePlayerInput(category.playersText).length} players
-                  </span>
+          <div className="category-grid">
+            {categories.map((category) => (
+              <div key={category.id} className="category-card">
+                <div className="category-header">
+                  <span className="category-pill">{category.label}</span>
+                  <div className="category-meta">
+                    <label>
+                      Base price (USD)
+                      <input
+                        type="number"
+                        min={1}
+                        value={category.basePrice}
+                        onChange={(event) =>
+                          updateCategory(category.id, {
+                            basePrice: Number(event.target.value)
+                          })
+                        }
+                      />
+                    </label>
+                    <span className="player-count">
+                      {parsePlayerInput(category.playersText).length} players
+                    </span>
+                  </div>
                 </div>
+                <textarea
+                  className="category-textarea"
+                  rows={4}
+                  value={category.playersText}
+                  onChange={(event) =>
+                    updateCategory(category.id, { playersText: event.target.value })
+                  }
+                  placeholder={"Messi, Ronaldo, Neymar\nMbappe, Haaland"}
+                  spellCheck={false}
+                />
               </div>
-              <textarea
-                className="category-textarea"
-                rows={4}
-                value={category.playersText}
-                onChange={(event) =>
-                  updateCategory(category.id, { playersText: event.target.value })
-                }
-                placeholder={"Messi, Ronaldo, Neymar\nMbappe, Haaland"}
-                spellCheck={false}
-              />
-            </div>
-          ))}
+            ))}
+          </div>
           {categories.length < CATEGORY_LABELS.length && (
             <button type="button" className="btn outline" onClick={addCategory}>
               Add new category (B-E)
@@ -648,12 +692,14 @@ const JoinAuctionPanel = ({
   publicAuctions,
   onBack,
   onJoined,
+  onWatch,
   notify
 }: {
   clientId: string;
   publicAuctions: Auction[];
   onBack: () => void;
   onJoined: (auctionId: string) => void;
+  onWatch: (auctionId: string) => void;
   notify: (type: ToastState["type"], text: string) => void;
 }) => {
   const [name, setName] = useState("");
@@ -728,6 +774,9 @@ const JoinAuctionPanel = ({
         </form>
         <div className="public-list">
           <h3>Public auctions live now</h3>
+          <p className="muted-label">
+            Tap Watch to spectate immediately. You still need the password to play.
+          </p>
           {!publicAuctions.length && <p>No public auctions yet.</p>}
           <ul>
             {publicAuctions.map((item) => (
@@ -739,16 +788,21 @@ const JoinAuctionPanel = ({
                     {item.categories.length} categories
                   </p>
                 </div>
-                <button
-                  className="btn outline"
-                  onClick={() => {
-                    setAuctionName(item.name);
-                    setPassword("");
-                    notify("success", `Selected ${item.name}. Enter the password to join.`);
-                  }}
-                >
-                  Select
-                </button>
+                <div className="public-actions">
+                  <button
+                    className="btn outline"
+                    onClick={() => {
+                      setAuctionName(item.name);
+                      setPassword("");
+                      notify("success", `Selected ${item.name}. Enter the password to join.`);
+                    }}
+                  >
+                    Join
+                  </button>
+                  <button className="btn ghost" type="button" onClick={() => onWatch(item.id)}>
+                    Watch
+                  </button>
+                </div>
               </li>
             ))}
           </ul>
@@ -792,6 +846,7 @@ const LobbyView = ({
                 {auction.participantCount}/{auction.maxParticipants}
               </strong>
             </span>
+            {auction.visibility === "public" && <ViewPill count={auction.viewCount ?? 0} />}
           </div>
         </div>
         <div className="share-block">
@@ -870,22 +925,37 @@ const VoiceControlButton = ({
   connecting,
   canUseVoice,
   toggle,
-  stageLabel
+  stageLabel,
+  mode = "talk"
 }: {
   connected: boolean;
   connecting: boolean;
   canUseVoice: boolean;
   toggle: () => void;
   stageLabel: string;
+  mode?: "talk" | "listen";
 }) => {
-  const statusText = connecting ? "Connecting..." : connected ? "Voice live" : "Voice off";
-  const helperText = !canUseVoice
-    ? "Join the session to speak."
-    : connecting
-      ? "Hang tight..."
-      : connected
-        ? `Chatting in ${stageLabel}.`
-        : "Tap to talk with everyone.";
+  const statusText = connecting
+    ? "Connecting..."
+    : connected
+      ? mode === "talk"
+        ? "Voice live"
+        : "Listening"
+      : mode === "talk"
+        ? "Voice off"
+        : "Listen in";
+  const helperText =
+    mode === "listen"
+      ? connected
+        ? `Listening to ${stageLabel}.`
+        : "Tap to hear the public call. Mic stays muted."
+      : !canUseVoice
+        ? "Join the session to speak."
+        : connecting
+          ? "Hang tight..."
+          : connected
+            ? `Chatting in ${stageLabel}.`
+            : "Tap to talk with everyone.";
   return (
     <button
       type="button"
@@ -893,9 +963,19 @@ const VoiceControlButton = ({
       onClick={toggle}
       disabled={!canUseVoice || connecting}
       aria-busy={connecting}
-      aria-label={connected ? "Leave voice chat" : "Join voice chat"}
+      aria-label={
+        mode === "talk"
+          ? connected
+            ? "Leave voice chat"
+            : "Join voice chat"
+          : connected
+            ? "Stop listening"
+            : "Listen in"
+      }
     >
-      <span className="voice-icon">{connecting ? "..." : connected ? "??" : "??"}</span>
+      <span className="voice-icon">
+        {connecting ? "..." : connected ? (mode === "talk" ? "🔊" : "🎧") : mode === "talk" ? "🎙" : "👂"}
+      </span>
       <span className="voice-copy">
         <strong>{statusText}</strong>
         <small>{helperText}</small>
@@ -924,6 +1004,11 @@ const RemoteVoiceAudio = ({ stream }: { stream: MediaStream }) => {
     audioRef.current.srcObject = stream;
   }, [stream]);
   return <audio ref={audioRef} autoPlay playsInline />;
+};
+
+const ViewPill = ({ count }: { count?: number }) => {
+  if (typeof count !== "number") return null;
+  return <span className="view-pill">👀 {count} views</span>;
 };
 
 const SoccerFormationBoard = ({
@@ -1181,6 +1266,7 @@ const LiveAuctionBoard = ({
             {isManual && <p className="muted-label">Re-auctioning an unsold player</p>}
           </div>
           <div className="deck-meta">
+            {auction.visibility === "public" && <ViewPill count={auction.viewCount ?? 0} />}
             <div className="timer-display">
               <span>Time left</span>
               <strong>{timerLabel}</strong>
@@ -1549,6 +1635,7 @@ const TeamConfirmationPanel = ({
     return (
       <section className="panel-card">
         <h2>Your final squad</h2>
+        {auction.visibility === "public" && <ViewPill count={auction.viewCount ?? 0} />}
         {submittedSoccer ? (
           <>
             <p className="muted-label">{finalFormation?.label}</p>
@@ -1608,6 +1695,7 @@ const TeamConfirmationPanel = ({
   return (
     <section className="panel-card">
       <h2>Lock your final {limit}</h2>
+      {auction.visibility === "public" && <ViewPill count={auction.viewCount ?? 0} />}
       <p className="muted-label">Switch between cricket order or soccer formation.</p>
       <div className="sport-toggle">
         <button
@@ -1837,6 +1925,7 @@ const RankingPanel = ({
   return (
     <section className="panel-card">
       <h2>Rank everyone else</h2>
+      {auction.visibility === "public" && <ViewPill count={auction.viewCount ?? 0} />}
       <p>Move cards to reorder. Top pick earns the most points.</p>
       <ol className="ranking-list">
         {order.map((participantId, index) => {
@@ -1932,6 +2021,7 @@ const ResultsBoard = ({
   return (
     <section className="panel-card">
       <h2>Final leaderboard</h2>
+      {auction.visibility === "public" && <ViewPill count={auction.viewCount ?? 0} />}
       {!results.length && <p>Waiting for admin to publish results...</p>}
       {results.length > 0 && (
         <table className="results-table">
