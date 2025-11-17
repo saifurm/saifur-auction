@@ -715,7 +715,9 @@ fieldset {
 }
 
 .ranking-formation .soccer-pitch {
-  max-width: 320px;
+  width: min(540px, 100%);
+  max-width: 100%;
+  margin: 0 auto;
 }
 
 .muted-label.warning {
@@ -875,55 +877,6 @@ fieldset {
   align-items: stretch;
 }
 
-.draft-meta {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 1rem;
-}
-
-.present-chip,
-.recent-chip {
-  border: 1px solid var(--border-color);
-  border-radius: 16px;
-  padding: 0.85rem 1rem;
-  background: rgba(255, 255, 255, 0.02);
-  min-width: 220px;
-}
-
-.present-chip span,
-.recent-chip span {
-  text-transform: uppercase;
-  font-size: 0.7rem;
-  letter-spacing: 0.08em;
-  color: var(--text-muted);
-}
-
-.present-chip strong {
-  display: block;
-  margin-top: 0.35rem;
-  font-size: 1.05rem;
-}
-
-.present-chip p,
-.recent-chip p {
-  margin: 0.2rem 0 0;
-  color: var(--text-muted);
-  font-size: 0.85rem;
-}
-
-.recent-chip ul {
-  list-style: none;
-  margin: 0.35rem 0 0;
-  padding: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 0.35rem;
-}
-
-.recent-chip li strong {
-  display: block;
-}
-
 .lobby-players {
   margin-top: 1.5rem;
 }
@@ -983,6 +936,10 @@ fieldset {
   right: 1.25rem;
   bottom: 1rem;
   text-align: right;
+}
+
+.deck-timer strong {
+  color: #ff6b6b;
 }
 
 .panel-voice-toggle {
@@ -1168,6 +1125,10 @@ fieldset {
   justify-content: space-between;
   gap: 1rem;
   align-items: center;
+}
+
+.ranking-list li > div:first-child {
+  flex: 1;
 }
 
 .rank-actions {

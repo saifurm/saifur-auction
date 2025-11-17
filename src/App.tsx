@@ -1071,10 +1071,46 @@ const VoiceAudioLayer = ({ streams }: { streams: VoiceStream[] }) => {
 
 const RemoteVoiceAudio = ({ stream }: { stream: MediaStream }) => {
   const audioRef = useRef<HTMLAudioElement | null>(null);
+  const attemptPlay = useCallback(() => {
+    const element = audioRef.current;
+    if (!element) return;
+    const playPromise = element.play();
+    if (playPromise && typeof playPromise.catch === "function") {
+      playPromise.catch(() => {
+        try {
+          element.muted = true;
+          const mutedAttempt = element.play();
+          mutedAttempt?.finally(() => {
+            element.muted = false;
+          });
+        } catch {
+          // Ignore autoplay errors; listener will retry on interaction.
+        }
+      });
+    }
+  }, []);
+
   useEffect(() => {
-    if (!audioRef.current) return;
-    audioRef.current.srcObject = stream;
-  }, [stream]);
+    const element = audioRef.current;
+    if (!element) return;
+    element.srcObject = stream;
+    attemptPlay();
+    return () => {
+      element.pause();
+      element.srcObject = null;
+    };
+  }, [stream, attemptPlay]);
+
+  useEffect(() => {
+    const resume = () => attemptPlay();
+    window.addEventListener("touchstart", resume, { passive: true });
+    window.addEventListener("click", resume, { passive: true });
+    return () => {
+      window.removeEventListener("touchstart", resume);
+      window.removeEventListener("click", resume);
+    };
+  }, [attemptPlay]);
+
   return <audio ref={audioRef} autoPlay playsInline />;
 };
 
@@ -1504,8 +1540,7 @@ const LiveAuctionBoard = ({
           <div className="team-card__header">
             <h3>My Team</h3>
             <span>
-              {formatCurrency(selfParticipant?.budgetRemaining ?? 0)} left, {playersPurchased}{" "}
-              {playersPurchased === 1 ? "player" : "players"} purchased
+              {formatCurrency(selfParticipant?.budgetRemaining ?? 0)} left, {playersPurchased} signed
             </span>
           </div>
           <ul className="team-roster">
@@ -1535,7 +1570,9 @@ const LiveAuctionBoard = ({
                 <strong>{player.name}</strong>
                 <div>
                   <span>{formatCurrency(player.budgetRemaining)} left</span>
-                  <span>{player.playersNeeded} slots</span>
+                  <span>
+                    {Math.max(auction.playersPerTeam - player.playersNeeded, 0)} signed
+                  </span>
                 </div>
               </li>
             ))}
@@ -1546,34 +1583,6 @@ const LiveAuctionBoard = ({
       <div className="player-order-card draft-board">
         <div className="draft-header">
           <h3>Full player list</h3>
-          <div className="draft-meta">
-            <div className="present-chip">
-              <span>Present auction</span>
-              {activeSlot ? (
-                <>
-                  <strong>{activeSlot.name}</strong>
-                  <p>
-                    Cat {activeSlot.categoryLabel} · Base {formatCurrency(activeSlot.basePrice)}
-                  </p>
-                </>
-              ) : (
-                <strong>No player live</strong>
-              )}
-            </div>
-            {recentHistory.length > 0 && (
-              <div className="recent-chip">
-                <span>Just drafted</span>
-                <ul>
-                  {[...recentHistory].reverse().map((entry) => (
-                    <li key={`${entry.slot.key}-${entry.queueIndex}`}>
-                      <strong>{entry.slot.name}</strong>
-                      <p>{entry.status}</p>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            )}
-          </div>
         </div>
         <ol className="player-order-list">
           {boardSections.length === 0 && <li className="ledger-label">No players queued.</li>}
@@ -2121,7 +2130,7 @@ const RankingPanel = ({
   return (
     <section className="panel-card">
       <PanelVoiceButton control={voiceControl} />
-      <h2>Rank everyone else</h2>
+      <h2>Rank others</h2>
       <p>Move cards to reorder. Top pick earns the most points.</p>
       <ol className="ranking-list">
         {order.map((participantId, index) => {
