@@ -429,7 +429,7 @@ const App = () => {
       </header>
       <main className="stage-panel">{loading ? <p>Loading...</p> : renderView()}</main>
       <VoiceAudioLayer streams={voiceStreams} />
-      <footer className="app-footer">� Saifur Rahman Mehedi</footer>
+      <footer className="app-footer">© Saifur Rahman Mehedi</footer>
     </div>
   );
 };
@@ -1725,8 +1725,11 @@ const TeamConfirmationPanel = ({
           <ul className="price-list">
             {finalRoster.map((player, index) => (
               <li key={`${player.playerName}-${index}`}>
-                {player.playerName} - {formatCurrency(player.price)}{" "}
-                {player.tag === "WK" ? "(WK)" : ""}
+                <strong>{player.playerName}</strong>
+                <span className="price-value">
+                  {formatCurrency(player.price)}
+                  {player.tag === "WK" && <em className="wk-badge">WK</em>}
+                </span>
               </li>
             ))}
           </ul>
@@ -2010,7 +2013,13 @@ const RankingPanel = ({
                   <ul className="price-list">
                     {lineup.map((player, idx) => (
                       <li key={`${player.playerName}-${idx}`}>
-                        {player.playerName} - {formatCurrency(player.price)}
+                        <strong>{player.playerName}</strong>
+                        <span className="price-value">
+                          {formatCurrency(player.price)}
+                          {"tag" in player && player.tag === "WK" && (
+                            <em className="wk-badge">WK</em>
+                          )}
+                        </span>
                       </li>
                     ))}
                   </ul>
@@ -2114,8 +2123,11 @@ const ResultsBoard = ({
                 <ul className="price-list">
                   {lineup.map((entry, index) => (
                     <li key={`${entry.playerName}-${index}`}>
-                      {entry.playerName} - {formatCurrency(entry.price)}{" "}
-                      {"tag" in entry && entry.tag === "WK" ? "(WK)" : ""}
+                      <strong>{entry.playerName}</strong>
+                      <span className="price-value">
+                        {formatCurrency(entry.price)}
+                        {"tag" in entry && entry.tag === "WK" && <em className="wk-badge">WK</em>}
+                      </span>
                     </li>
                   ))}
                 </ul>
