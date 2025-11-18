@@ -1,0 +1,14 @@
+{
+  "projects": {
+    "default": "auction-9bf14"
+  },
+  "targets": {
+    "auction-9bf14": {
+      "hosting": {
+        "production": [
+          "auction-9bf14"
+        ]
+      }
+    }
+  }
+}
