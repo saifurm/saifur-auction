@@ -15,16 +15,22 @@ export const playAnnouncement = async (text: string): Promise<void> => {
       return;
     }
 
-    // Get the base64 audio from the response
-    const base64Audio = await response.text();
-    
-    // Convert base64 to blob
-    const binaryString = atob(base64Audio);
-    const bytes = new Uint8Array(binaryString.length);
-    for (let i = 0; i < binaryString.length; i++) {
-      bytes[i] = binaryString.charCodeAt(i);
+    const contentType = response.headers.get("Content-Type") ?? "";
+    let audioBlob: Blob;
+
+    if (contentType.includes("audio")) {
+      const audioBuffer = await response.arrayBuffer();
+      audioBlob = new Blob([audioBuffer], { type: contentType });
+    } else {
+      // Fallback for environments that still return base64 text
+      const base64Audio = await response.text();
+      const binaryString = atob(base64Audio);
+      const bytes = new Uint8Array(binaryString.length);
+      for (let i = 0; i < binaryString.length; i++) {
+        bytes[i] = binaryString.charCodeAt(i);
+      }
+      audioBlob = new Blob([bytes], { type: "audio/mpeg" });
     }
-    const audioBlob = new Blob([bytes], { type: "audio/mpeg" });
     
     // Create audio URL and play
     const audioUrl = URL.createObjectURL(audioBlob);
