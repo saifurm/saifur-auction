@@ -1,57 +1,47 @@
-import { getVoiceAudioContext } from "./audioEngine";
+import { createClient } from "@supabase/supabase-js";
 
-const VOICE_ID = import.meta.env.VITE_ELEVENLABS_VOICE_ID || "NihRgaLj2HWAjvZ5XNxl";
-const API_KEY = import.meta.env.VITE_ELEVENLABS_API_KEY;
-const MODEL_ID = "eleven_monolingual_v1";
+export const audioAnnounce = async (
+  text: string,
+  AudioContext: typeof window.AudioContext
+): Promise<void> => {
+  try {
+    // Call our Netlify serverless function instead of ElevenLabs directly
+    const response = await fetch("/.netlify/functions/announce", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ text }),
+    });
 
-const audioCache = new Map<string, AudioBuffer>();
+    if (!response.ok) {
+      const error = await response.text();
+      console.error("Audio announcement failed:", error);
+      return;
+    }
 
-const fetchAnnouncementBuffer = async (text: string): Promise<AudioBuffer | null> => {
-  const ctx = getVoiceAudioContext();
-  if (!ctx || !API_KEY) {
-    return null;
+    // Get the base64 audio from the response
+    const base64Audio = await response.text();
+    
+    // Convert base64 to blob
+    const binaryString = atob(base64Audio);
+    const bytes = new Uint8Array(binaryString.length);
+    for (let i = 0; i < binaryString.length; i++) {
+      bytes[i] = binaryString.charCodeAt(i);
+    }
+    const audioBlob = new Blob([bytes], { type: "audio/mpeg" });
+    
+    // Create audio URL and play
+    const audioUrl = URL.createObjectURL(audioBlob);
+    const audio = new Audio(audioUrl);
+    
+    await audio.play();
+    
+    // Clean up
+    audio.onended = () => {
+      URL.revokeObjectURL(audioUrl);
+    };
+  } catch (error) {
+    console.error("Error in audio announcement:", error);
   }
-  const cacheKey = `${VOICE_ID}:${text}`;
-  if (audioCache.has(cacheKey)) {
-    return audioCache.get(cacheKey)!;
-  }
-  const response = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${VOICE_ID}`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Accept: "audio/mpeg",
-      "xi-api-key": API_KEY
-    },
-    body: JSON.stringify({
-      text,
-      model_id: MODEL_ID,
-      voice_settings: {
-        stability: 0.4,
-        similarity_boost: 0.9,
-        style: 0.25,
-        use_speaker_boost: true
-      }
-    })
-  });
-  if (!response.ok) {
-    return null;
-  }
-  const arrayBuffer = await response.arrayBuffer();
-  const decoded = await ctx.decodeAudioData(arrayBuffer);
-  audioCache.set(cacheKey, decoded);
-  return decoded;
-};
-
-export const playAnnouncement = async (text: string) => {
-  if (!text.trim()) return;
-  const ctx = getVoiceAudioContext();
-  if (!ctx || !API_KEY) return;
-  const buffer = await fetchAnnouncementBuffer(text);
-  if (!buffer) return;
-  const source = ctx.createBufferSource();
-  const gain = ctx.createGain();
-  gain.gain.value = 1.05;
-  source.buffer = buffer;
-  source.connect(gain).connect(ctx.destination);
-  source.start();
 };
