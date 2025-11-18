@@ -33,6 +33,7 @@ export interface CompletedPlayerEntry {
   result: "sold" | "unsold";
   winnerId?: string;
   winnerName?: string;
+  winnerAlias?: string;
   finalBid?: number;
   resolvedAt?: Timestamp;
 }
@@ -78,6 +79,8 @@ export interface Auction {
     rosterCount: number;
     budgetRemaining: number;
   }[];
+  anonymousMode?: boolean;
+  adminParticipating?: boolean;
 }
 
 export interface RosterEntry {
@@ -92,7 +95,7 @@ export interface TaggedRosterEntry extends RosterEntry {
   slotLabel?: string;
 }
 
-export type SportMode = "cricket" | "soccer";
+export type SportMode = "cricket" | "soccer" | "basketball" | "football" | "rugby";
 
 export interface Participant {
   id: string;
@@ -111,4 +114,6 @@ export interface Participant {
   hasSubmittedTeam: boolean;
   rankingSubmitted: boolean;
   rankings?: Record<string, number>;
+  alias?: string | null;
+  participating?: boolean;
 }

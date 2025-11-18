@@ -21,11 +21,13 @@ import type {
   Participant,
   PlayerSlot,
   CompletedPlayerEntry,
-  TaggedRosterEntry
+  TaggedRosterEntry,
+  SportMode
 } from "../types";
 import { buildPlayerQueue } from "../utils/players";
+import { generateAlias } from "../utils/alias";
 
-const START_TIMER_MS = 60000;
+const START_TIMER_MS = 30000;
 const ACTIVE_BID_TIMER_MS = 15000;
 
 const getActiveSlot = (auction: Auction, queue: PlayerSlot[]) => {
@@ -55,6 +57,8 @@ export interface CreateAuctionInput {
   visibility: "public" | "private";
   password: string;
   categories: CategoryInput[];
+  anonymousMode?: boolean;
+  adminWillPlay?: boolean;
 }
 
 export const createAuction = async (input: CreateAuctionInput) => {
@@ -99,7 +103,7 @@ export const createAuction = async (input: CreateAuctionInput) => {
     adminId: input.clientId,
     adminName: input.adminName.trim() || "Admin",
     maxParticipants: input.maxParticipants,
-    participantCount: 1,
+    participantCount: input.adminWillPlay === false ? 0 : 1,
     playersPerTeam: input.playersPerTeam,
     budgetPerPlayer: input.budgetPerPlayer,
     categories: normalizedCategories,
@@ -117,7 +121,9 @@ export const createAuction = async (input: CreateAuctionInput) => {
     totalPlayers,
     viewCount: 0,
     completedPlayers: [],
-    results: []
+    results: [],
+    anonymousMode: Boolean(input.anonymousMode),
+    adminParticipating: input.adminWillPlay !== false
   });
 
   const participantRef = doc(collection(docRef, "participants"), input.clientId);
@@ -125,12 +131,14 @@ export const createAuction = async (input: CreateAuctionInput) => {
     name: input.adminName.trim().slice(0, 10) || "Admin",
     role: "admin",
     joinedAt: serverTimestamp(),
-    budgetRemaining: input.budgetPerPlayer,
-    playersNeeded: input.playersPerTeam,
+    budgetRemaining: input.adminWillPlay === false ? 0 : input.budgetPerPlayer,
+    playersNeeded: input.adminWillPlay === false ? 0 : input.playersPerTeam,
     roster: [],
     hasSubmittedTeam: false,
     rankingSubmitted: false,
-    rankings: {}
+    rankings: {},
+    alias: input.anonymousMode ? generateAlias() : null,
+    participating: input.adminWillPlay !== false
   });
 
   return docRef.id;
@@ -193,7 +201,9 @@ export const joinAuction = async (input: JoinAuctionInput) => {
         roster: [],
         hasSubmittedTeam: false,
         rankingSubmitted: false,
-        rankings: {}
+        rankings: {},
+        alias: auction.anonymousMode ? generateAlias() : null,
+        participating: true
       });
       return;
     }
@@ -204,7 +214,9 @@ export const joinAuction = async (input: JoinAuctionInput) => {
       {
         ...existing,
         name: safeName || existing.name,
-        rankings: existing.rankings ?? {}
+        rankings: existing.rankings ?? {},
+        alias: existing.alias ?? (auction.anonymousMode ? generateAlias() : null),
+        participating: existing.participating ?? true
       },
       { merge: true }
     );
@@ -496,7 +508,8 @@ export const finalizeCurrentPlayer = async (input: FinalizeInput) => {
         ...completedEntry,
         result: "sold",
         winnerId: activeBid.bidderId,
-        winnerName: activeBid.bidderName,
+        winnerName: participant.name,
+        winnerAlias: participant.alias ?? participant.name,
         finalBid: activeBid.amount
       };
     }
@@ -540,7 +553,7 @@ interface SubmitTeamInput {
   auctionId: string;
   clientId: string;
   finalRoster: TaggedRosterEntry[];
-  sport: "cricket" | "soccer";
+  sport: SportMode;
   formationCode?: string;
   formationLabel?: string;
 }

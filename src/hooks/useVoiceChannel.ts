@@ -109,14 +109,36 @@ export const useVoiceChannel = ({
     callMapRef.current.delete(peerId);
   }, []);
 
+  const enhanceCall = useCallback((call: MediaConnection) => {
+    const pc = call.peerConnection as RTCPeerConnection | undefined;
+    if (!pc) return;
+    const optimize = () => {
+      pc.getSenders()
+        .filter((sender) => sender.track?.kind === "audio")
+        .forEach((sender) => {
+          const params = sender.getParameters();
+          if (!params.encodings || !params.encodings.length) {
+            params.encodings = [{}];
+          }
+          params.encodings[0].maxBitrate = 128_000;
+          sender.setParameters(params).catch(() => {
+            /* ignore */
+          });
+        });
+    };
+    optimize();
+    pc.addEventListener("negotiationneeded", optimize);
+  }, []);
+
   const bindCall = useCallback(
     (call: MediaConnection, peerId: string) => {
+      enhanceCall(call);
       callMapRef.current.set(peerId, call);
       call.on("stream", (remote) => addRemoteStream(peerId, remote));
       call.on("close", () => removeRemoteStream(peerId));
       call.on("error", () => removeRemoteStream(peerId));
     },
-    [addRemoteStream, removeRemoteStream]
+    [addRemoteStream, removeRemoteStream, enhanceCall]
   );
 
   const leaveChannel = useCallback(async () => {
@@ -144,15 +166,35 @@ export const useVoiceChannel = ({
     setError(null);
 
     try {
+      const audioConstraints: MediaTrackConstraints = {
+        echoCancellation: true,
+        noiseSuppression: true,
+        autoGainControl: true,
+        channelCount: 2,
+        sampleRate: 48000
+      };
+
       if (!listenOnly) {
-        const localStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        const localStream = await navigator.mediaDevices.getUserMedia({ audio: audioConstraints });
+        localStream.getAudioTracks().forEach((track) => {
+          track.applyConstraints(audioConstraints).catch(() => {
+            /* ignore */
+          });
+        });
         streamRef.current = localStream;
       } else {
         streamRef.current = null;
       }
 
       const peerId = buildPeerId(auctionId, scope, clientId);
-      const peer = new Peer(peerId);
+      const peer = new Peer(peerId, {
+        config: {
+          iceServers: [
+            { urls: "stun:stun.l.google.com:19302" },
+            { urls: "stun:global.stun.twilio.com:3478?transport=udp" }
+          ]
+        }
+      });
       peerRef.current = peer;
 
       await new Promise<void>((resolve, reject) => {

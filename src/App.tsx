@@ -19,6 +19,8 @@ import { useClientId } from "./hooks/useClientId";
 import { useAuctionData } from "./hooks/useAuctionData";
 import { useCountdown } from "./hooks/useCountdown";
 import { useVoiceChannel } from "./hooks/useVoiceChannel";
+import { getVoiceAudioContext } from "./services/audioEngine";
+import { playAnnouncement } from "./services/voiceAnnouncer";
 import type { VoiceStream } from "./hooks/useVoiceChannel";
 import { formatCurrency, formatTimer } from "./utils/format";
 import { buildPlayerQueue } from "./utils/players";
@@ -99,6 +101,202 @@ const CRICKET_POSITIONS = [
   "Eleven"
 ];
 
+const EXTENDED_BENCH_POSITIONS = Array.from({ length: 12 }).map((_, idx) => ({
+  id: `soccer-bench-${idx}`,
+  label: `Bench ${idx + 1}`,
+  x: 10 + ((idx % 5) * 18),
+  y: 94 - Math.floor(idx / 5) * 3
+}));
+
+const extendSoccerSlots = (formation: ReturnType<typeof getFormationByCode>, limit: number) => {
+  const slots = formation?.slots ?? [];
+  if (limit <= slots.length) {
+    return slots.slice(0, limit);
+  }
+  const extrasNeeded = limit - slots.length;
+  return [...slots, ...EXTENDED_BENCH_POSITIONS.slice(0, extrasNeeded)];
+};
+
+type CustomSport = Exclude<SportMode, "cricket" | "soccer">;
+
+interface SportSlot {
+  id: string;
+  label: string;
+  x: number;
+  y: number;
+}
+
+const CUSTOM_SPORT_PRESETS: Record<
+  CustomSport,
+  {
+    displayLabel: string;
+    background: string;
+    formations: Array<{ code: string; label: string; slots: SportSlot[] }>;
+  }
+> = {
+  basketball: {
+    displayLabel: "Basketball lineup",
+    background: "basketball",
+    formations: [
+      {
+        code: "basketball-classic",
+        label: "Classic 2-3",
+        slots: [
+          { id: "bb-pg", label: "Point Guard", x: 50, y: 82 },
+          { id: "bb-sg", label: "Shooting Guard", x: 70, y: 65 },
+          { id: "bb-sf", label: "Small Forward", x: 30, y: 65 },
+          { id: "bb-pf", label: "Power Forward", x: 65, y: 45 },
+          { id: "bb-c", label: "Center", x: 35, y: 45 }
+        ]
+      },
+      {
+        code: "basketball-stretch",
+        label: "Stretch 4",
+        slots: [
+          { id: "bb2-pg", label: "Point Guard", x: 50, y: 82 },
+          { id: "bb2-sg", label: "Wing", x: 75, y: 58 },
+          { id: "bb2-sf", label: "Wing", x: 25, y: 58 },
+          { id: "bb2-pf", label: "Stretch Forward", x: 70, y: 40 },
+          { id: "bb2-c", label: "Mobile Center", x: 30, y: 40 }
+        ]
+      }
+    ]
+  },
+  football: {
+    displayLabel: "Football depth chart",
+    background: "football",
+    formations: [
+      {
+        code: "football-trips",
+        label: "Trips Right",
+        slots: [
+          { id: "fb-qb", label: "QB", x: 50, y: 82 },
+          { id: "fb-rb", label: "RB", x: 40, y: 68 },
+          { id: "fb-wr1", label: "X WR", x: 15, y: 60 },
+          { id: "fb-wr2", label: "Slot WR", x: 70, y: 55 },
+          { id: "fb-wr3", label: "Z WR", x: 85, y: 60 },
+          { id: "fb-te", label: "TE", x: 60, y: 58 },
+          { id: "fb-ol1", label: "LT", x: 30, y: 48 },
+          { id: "fb-ol2", label: "LG", x: 45, y: 48 },
+          { id: "fb-ol3", label: "C", x: 60, y: 48 },
+          { id: "fb-ol4", label: "RG", x: 75, y: 48 },
+          { id: "fb-ol5", label: "RT", x: 90, y: 48 }
+        ]
+      },
+      {
+        code: "football-i",
+        label: "I-Formation",
+        slots: [
+          { id: "fb2-qb", label: "QB", x: 50, y: 78 },
+          { id: "fb2-rb", label: "HB", x: 50, y: 65 },
+          { id: "fb2-fb", label: "FB", x: 50, y: 70 },
+          { id: "fb2-wr1", label: "WR", x: 20, y: 58 },
+          { id: "fb2-wr2", label: "WR", x: 80, y: 58 },
+          { id: "fb2-te", label: "TE", x: 70, y: 55 },
+          { id: "fb2-ol1", label: "LT", x: 30, y: 47 },
+          { id: "fb2-ol2", label: "LG", x: 45, y: 47 },
+          { id: "fb2-ol3", label: "C", x: 60, y: 47 },
+          { id: "fb2-ol4", label: "RG", x: 75, y: 47 },
+          { id: "fb2-ol5", label: "RT", x: 90, y: 47 }
+        ]
+      }
+    ]
+  },
+  rugby: {
+    displayLabel: "Rugby fifteen",
+    background: "rugby",
+    formations: [
+      {
+        code: "rugby-balanced",
+        label: "Balanced Fifteen",
+        slots: [
+          { id: "rg-15", label: "Full Back", x: 50, y: 88 },
+          { id: "rg-14", label: "Right Wing", x: 80, y: 73 },
+          { id: "rg-13", label: "Outside Centre", x: 60, y: 68 },
+          { id: "rg-12", label: "Inside Centre", x: 40, y: 68 },
+          { id: "rg-11", label: "Left Wing", x: 20, y: 73 },
+          { id: "rg-10", label: "Fly-half", x: 50, y: 58 },
+          { id: "rg-9", label: "Scrum-half", x: 50, y: 48 },
+          { id: "rg-8", label: "Number 8", x: 50, y: 40 },
+          { id: "rg-7", label: "Open Flanker", x: 70, y: 35 },
+          { id: "rg-6", label: "Blind Flanker", x: 30, y: 35 },
+          { id: "rg-5", label: "Lock", x: 62, y: 25 },
+          { id: "rg-4", label: "Lock", x: 38, y: 25 },
+          { id: "rg-3", label: "Tight Prop", x: 70, y: 15 },
+          { id: "rg-2", label: "Hooker", x: 50, y: 15 },
+          { id: "rg-1", label: "Loose Prop", x: 30, y: 15 }
+        ]
+      },
+      {
+        code: "rugby-wide",
+        label: "Wide Attack",
+        slots: [
+          { id: "rg2-15", label: "Full Back", x: 50, y: 88 },
+          { id: "rg2-14", label: "Wing", x: 85, y: 70 },
+          { id: "rg2-11", label: "Wing", x: 15, y: 70 },
+          { id: "rg2-13", label: "Outside Centre", x: 65, y: 60 },
+          { id: "rg2-12", label: "Inside Centre", x: 35, y: 60 },
+          { id: "rg2-10", label: "Fly-half", x: 50, y: 52 },
+          { id: "rg2-9", label: "Scrum-half", x: 50, y: 44 },
+          { id: "rg2-8", label: "Number 8", x: 50, y: 36 },
+          { id: "rg2-7", label: "Op Flanker", x: 70, y: 30 },
+          { id: "rg2-6", label: "Bl Flanker", x: 30, y: 30 },
+          { id: "rg2-5", label: "Lock", x: 65, y: 22 },
+          { id: "rg2-4", label: "Lock", x: 35, y: 22 },
+          { id: "rg2-3", label: "Prop", x: 72, y: 12 },
+          { id: "rg2-2", label: "Hooker", x: 50, y: 12 },
+          { id: "rg2-1", label: "Prop", x: 28, y: 12 }
+        ]
+      }
+    ]
+  }
+};
+
+const getCustomFormation = (sport: CustomSport, code?: string) => {
+  const preset = CUSTOM_SPORT_PRESETS[sport];
+  if (!preset) return null;
+  return preset.formations.find((entry) => entry.code === code) ?? preset.formations[0];
+};
+
+const buildCustomSportSlots = (sport: CustomSport, limit: number, code?: string): SportSlot[] => {
+  const formation = getCustomFormation(sport, code);
+  const base = formation?.slots ?? [];
+  if (limit <= base.length) {
+    return base.slice(0, limit);
+  }
+  const extraCount = limit - base.length;
+  const extras: SportSlot[] = Array.from({ length: extraCount }).map((_, idx) => ({
+    id: `${sport}-bench-${idx}`,
+    label: `Bench ${idx + 1}`,
+    x: 10 + ((idx % 5) * 18),
+    y: 94 - Math.floor(idx / 5) * 4
+  }));
+  return [...base, ...extras];
+};
+
+const syncAssignments = (
+  slots: SportSlot[],
+  prev: Record<string, string | null> = {}
+): Record<string, string | null> => {
+  const next: Record<string, string | null> = {};
+  slots.forEach((slot) => {
+    next[slot.id] = prev[slot.id] ?? null;
+  });
+  return next;
+};
+
+const getParticipantDisplayName = (
+  participant: Participant,
+  auction: Auction | null,
+  context: "default" | "lobby" | "leaderboard" = "default"
+) => {
+  if (!auction?.anonymousMode) return participant.name;
+  if (context === "lobby" || context === "leaderboard") {
+    return participant.name;
+  }
+  return participant.alias ?? participant.name;
+};
+
 const usePublicAuctions = () => {
   const [publicAuctions, setPublicAuctions] = useState<Auction[]>([]);
 
@@ -138,6 +336,9 @@ const App = () => {
   );
   const [toast, setToast] = useState<ToastState | null>(null);
   const publicAuctions = usePublicAuctions();
+  const [pendingStartAuction, setPendingStartAuction] = useState<string | null>(null);
+  const [preStartCountdown, setPreStartCountdown] = useState(0);
+  const resumeAvailable = Boolean(activeAuctionId && !auction);
 
   const notify = (type: ToastState["type"], text: string) => {
     setToast({ type, text });
@@ -176,6 +377,12 @@ const App = () => {
   }, [toast]);
 
   useAdminAutomation(auction, participants, selfParticipant, notify);
+  useEffect(() => {
+    if (!auction || auction.status !== "lobby") {
+      setPendingStartAuction(null);
+      setPreStartCountdown(0);
+    }
+  }, [auction?.status]);
   const viewingOnly = useMemo(
     () => Boolean(auction && auction.visibility === "public" && !selfParticipant),
     [auction?.id, auction?.visibility, selfParticipant?.id]
@@ -193,11 +400,44 @@ const App = () => {
     });
   }, [viewingOnly, auction?.id]);
   const [micEnabled, setMicEnabled] = useState(false);
+  const [auctionAudioEnabled, setAuctionAudioEnabled] = useState(() => {
+    if (typeof window === "undefined") return false;
+    return window.localStorage.getItem("saifur-auction:voice") !== "off";
+  });
+  const triggerStartCountdown = useCallback(() => {
+    if (!auction || auction.status !== "lobby" || !selfParticipant || selfParticipant.role !== "admin") return;
+    if (preStartCountdown > 0 || pendingStartAuction) return;
+    setPendingStartAuction(auction.id);
+    setPreStartCountdown(10);
+    playAnnouncement("Auction starting in ten seconds");
+  }, [auction?.id, auction?.status, pendingStartAuction, preStartCountdown, selfParticipant]);
+  useEffect(() => {
+    if (!pendingStartAuction || preStartCountdown <= 0) return;
+    const timer = setTimeout(() => {
+      setPreStartCountdown((prev) => (prev > 0 ? prev - 1 : 0));
+    }, 1000);
+    return () => clearTimeout(timer);
+  }, [pendingStartAuction, preStartCountdown]);
+  useEffect(() => {
+    if (!pendingStartAuction || preStartCountdown !== 0) return;
+    const target = pendingStartAuction;
+    setPendingStartAuction(null);
+    startAuction(target).catch((error) => notify("error", (error as Error).message));
+  }, [pendingStartAuction, preStartCountdown, notify]);
   useEffect(() => {
     if (!selfParticipant) {
       setMicEnabled(false);
     }
   }, [selfParticipant?.id]);
+  useEffect(() => {
+    if (view !== "auction") {
+      setAuctionAudioEnabled(false);
+    }
+  }, [view]);
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    window.localStorage.setItem("saifur-auction:voice", auctionAudioEnabled ? "on" : "off");
+  }, [auctionAudioEnabled]);
 
   const voiceCapableViews: ViewMode[] = ["lobby", "auction", "post", "ranking", "results"];
   const voiceEnabled = Boolean(auction && voiceCapableViews.includes(view));
@@ -291,10 +531,10 @@ const App = () => {
     if (!auction && ["lobby", "auction", "post", "ranking", "results"].includes(view)) {
       return (
         <LandingHero
-          hasActiveAuction={false}
+          hasActiveAuction={resumeAvailable}
           onCreate={() => setView("create")}
           onJoin={() => setView("join")}
-          onResume={null}
+          onResume={resumeAvailable ? () => setView("lobby") : null}
         />
       );
     }
@@ -303,14 +543,10 @@ const App = () => {
       case "landing":
         return (
           <LandingHero
-            hasActiveAuction={Boolean(activeAuctionId)}
+            hasActiveAuction={resumeAvailable}
             onCreate={() => setView("create")}
             onJoin={() => setView("join")}
-            onResume={
-              activeAuctionId
-                ? () => setView(auction ? "lobby" : "landing")
-                : null
-            }
+            onResume={resumeAvailable ? () => setView("lobby") : null}
           />
         );
       case "create":
@@ -343,6 +579,8 @@ const App = () => {
               notify={notify}
               voiceControl={voiceButtonControl}
               viewerCount={showViewerCount ? viewerCount : null}
+              preStartCountdown={preStartCountdown}
+              onStartCountdown={triggerStartCountdown}
             />
           )
         );
@@ -355,6 +593,8 @@ const App = () => {
               selfParticipant={selfParticipant}
               notify={notify}
               voiceControl={voiceButtonControl}
+              audioEnabled={auctionAudioEnabled}
+              onToggleAudio={() => setAuctionAudioEnabled((prev) => !prev)}
             />
           )
         );
@@ -415,7 +655,7 @@ const App = () => {
               <div>
                 <p className="chip-label">Active auction</p>
                 <p className="chip-value">
-                  {auction.name} -{" "}
+                  <span className="chip-auction-name">{auction.name}</span>
                   <span className="status-pill">{auction.status.toUpperCase()}</span>
                 </p>
                 {viewingOnly && <p className="chip-label">Viewing only</p>}
@@ -483,6 +723,8 @@ const CreateAuctionForm = ({
   const [playersPerTeamInput, setPlayersPerTeamInput] = useState("11");
   const [budgetPerPlayerInput, setBudgetPerPlayerInput] = useState("100");
   const [visibility, setVisibility] = useState<"public" | "private">("private");
+  const [adminWillPlay, setAdminWillPlay] = useState(true);
+  const [anonymousMode, setAnonymousMode] = useState(false);
   const [categories, setCategories] = useState<CategoryFormState[]>([
     {
       id: crypto.randomUUID(),
@@ -549,11 +791,12 @@ const CreateAuctionForm = ({
       notify("error", "Players per team must be between 1 and 20.");
       return;
     }
-    const resolvedBudget = Number(budgetPerPlayerInput || "0");
-    if (!Number.isFinite(resolvedBudget) || resolvedBudget < 10) {
-      notify("error", "Budget per player should be at least $10.");
+    const resolvedBudgetMillions = Number(budgetPerPlayerInput || "0");
+    if (!Number.isFinite(resolvedBudgetMillions) || resolvedBudgetMillions < 1) {
+      notify("error", "Budget per player should be at least $1M.");
       return;
     }
+    const resolvedBudget = resolvedBudgetMillions * 1_000_000;
 
     setSaving(true);
     try {
@@ -575,7 +818,9 @@ const CreateAuctionForm = ({
         budgetPerPlayer: resolvedBudget,
         visibility,
         password: password.trim(),
-        categories: preparedCategories
+        categories: preparedCategories,
+        anonymousMode,
+        adminWillPlay
       });
       notify("success", "Auction created. Share the code + password to start inviting.");
       onCreated(newAuctionId);
@@ -594,16 +839,6 @@ const CreateAuctionForm = ({
       <h2>Create Auction</h2>
       <form className="form-grid" onSubmit={handleSubmit}>
         <label>
-          Admin name (you'll play too)
-          <input
-            type="text"
-            value={adminName}
-            maxLength={10}
-            onChange={(event) => setAdminName(event.target.value)}
-            required
-          />
-        </label>
-        <label>
           Auction name (max 20 chars)
           <input
             type="text"
@@ -614,14 +849,47 @@ const CreateAuctionForm = ({
           />
         </label>
         <label>
-          Password (share with friends)
+          Password
           <input
             type="text"
             value={password}
             onChange={(event) => setPassword(event.target.value)}
-            placeholder="Required even for private invites"
+            placeholder="Set a password for this auction"
             required
           />
+        </label>
+        <label>
+          Admin name
+          <input
+            type="text"
+            value={adminName}
+            maxLength={10}
+            onChange={(event) => setAdminName(event.target.value)}
+            required
+          />
+        </label>
+        <label className="toggle-row">
+          <span>I'll play in this auction</span>
+          <input
+            type="checkbox"
+            checked={adminWillPlay}
+            onChange={(event) => setAdminWillPlay(event.target.checked)}
+          />
+          <p className="muted-label">
+            Keep this on to bid alongside friends. Turn it off if you're just hosting & judging.
+          </p>
+        </label>
+        <label className="toggle-row">
+          <span>Anonymous auction</span>
+          <input
+            type="checkbox"
+            checked={anonymousMode}
+            onChange={(event) => setAnonymousMode(event.target.checked)}
+          />
+          <p className="muted-label">
+            Everyone gets a short alias during bidding and ranking. Real names show only in lobby
+            and final leaderboard.
+          </p>
         </label>
         <label>
           How many friends will play?
@@ -648,7 +916,7 @@ const CreateAuctionForm = ({
           />
         </label>
         <label>
-          Budget per player (USD)
+          Budget per player (USD millions)
           <input
             type="text"
             inputMode="numeric"
@@ -865,7 +1133,9 @@ const LobbyView = ({
   selfParticipant,
   notify,
   voiceControl,
-  viewerCount
+  viewerCount,
+  preStartCountdown,
+  onStartCountdown
 }: {
   auction: Auction;
   participants: Participant[];
@@ -873,16 +1143,11 @@ const LobbyView = ({
   notify: (type: ToastState["type"], text: string) => void;
   voiceControl: VoiceButtonControl | null;
   viewerCount: number | null;
+  preStartCountdown: number;
+  onStartCountdown: () => void;
 }) => {
   const isAdmin = selfParticipant?.role === "admin";
   const queuedPlayers = useMemo(() => buildPlayerQueue(auction.categories), [auction.categories]);
-  const handleStart = async () => {
-    try {
-      await startAuction(auction.id);
-    } catch (error) {
-      notify("error", (error as Error).message);
-    }
-  };
 
   return (
     <section className="panel-card lobby">
@@ -919,12 +1184,22 @@ const LobbyView = ({
               </div>
             </div>
             {isAdmin && (
-              <button className="btn accent" onClick={handleStart}>
-                Start auction
+              <button
+                className="btn accent"
+                onClick={onStartCountdown}
+                disabled={preStartCountdown > 0}
+              >
+                {preStartCountdown > 0 ? `Starting in ${preStartCountdown}s` : "Start auction"}
               </button>
             )}
           </div>
           {!isAdmin && <p className="muted-label">Waiting for admin to start</p>}
+          {preStartCountdown > 0 && (
+            <div className="prestart-banner">
+              <span>Auction begins in</span>
+              <strong>{preStartCountdown}s</strong>
+            </div>
+          )}
         </div>
       </div>
       <div className="lobby-body">
@@ -1068,48 +1343,70 @@ const VoiceAudioLayer = ({ streams }: { streams: VoiceStream[] }) => {
 };
 
 const RemoteVoiceAudio = ({ stream }: { stream: MediaStream }) => {
-  const audioRef = useRef<HTMLAudioElement | null>(null);
-  const attemptPlay = useCallback(() => {
-    const element = audioRef.current;
-    if (!element) return;
-    const playPromise = element.play();
-    if (playPromise && typeof playPromise.catch === "function") {
-      playPromise.catch(() => {
-        try {
-          element.muted = true;
-          const mutedAttempt = element.play();
-          mutedAttempt?.finally(() => {
-            element.muted = false;
-          });
-        } catch {
-          // Ignore autoplay errors; listener will retry on interaction.
-        }
-      });
-    }
+  const fallbackRef = useRef<HTMLAudioElement | null>(null);
+
+  useEffect(() => {
+    const ctx = getVoiceAudioContext();
+    if (!ctx) return;
+    const resume = () => {
+      if (ctx.state === "suspended") {
+        void ctx.resume();
+      }
+    };
+    window.addEventListener("click", resume);
+    window.addEventListener("touchstart", resume, { passive: true });
+    return () => {
+      window.removeEventListener("click", resume);
+      window.removeEventListener("touchstart", resume);
+    };
   }, []);
 
   useEffect(() => {
-    const element = audioRef.current;
+    const element = fallbackRef.current;
     if (!element) return;
     element.srcObject = stream;
-    attemptPlay();
+    element.volume = 0;
+    element.play().catch(() => {
+      element.muted = true;
+      element.play().finally(() => {
+        element.muted = false;
+      });
+    });
     return () => {
       element.pause();
       element.srcObject = null;
     };
-  }, [stream, attemptPlay]);
+  }, [stream]);
 
   useEffect(() => {
-    const resume = () => attemptPlay();
-    window.addEventListener("touchstart", resume, { passive: true });
-    window.addEventListener("click", resume, { passive: true });
+    const ctx = getVoiceAudioContext();
+    if (!ctx) return;
+    const source = ctx.createMediaStreamSource(stream);
+    const highpass = ctx.createBiquadFilter();
+    highpass.type = "highpass";
+    highpass.frequency.value = 120;
+    const lowpass = ctx.createBiquadFilter();
+    lowpass.type = "lowpass";
+    lowpass.frequency.value = 8200;
+    const compressor = ctx.createDynamicsCompressor();
+    compressor.threshold.value = -20;
+    compressor.knee.value = 16;
+    compressor.ratio.value = 5;
+    compressor.attack.value = 0.01;
+    compressor.release.value = 0.25;
+    const gain = ctx.createGain();
+    gain.gain.value = 1.08;
+    source.connect(highpass).connect(lowpass).connect(compressor).connect(gain).connect(ctx.destination);
     return () => {
-      window.removeEventListener("touchstart", resume);
-      window.removeEventListener("click", resume);
+      source.disconnect();
+      highpass.disconnect();
+      lowpass.disconnect();
+      compressor.disconnect();
+      gain.disconnect();
     };
-  }, [attemptPlay]);
+  }, [stream]);
 
-  return <audio ref={audioRef} autoPlay playsInline />;
+  return <audio ref={fallbackRef} autoPlay playsInline muted />;
 };
 
 const ViewPill = ({ count }: { count?: number }) => {
@@ -1120,14 +1417,17 @@ const ViewPill = ({ count }: { count?: number }) => {
 const SoccerFormationBoard = ({
   formationCode,
   players,
-  compact = false
+  compact = false,
+  limit
 }: {
   formationCode: string;
   players: TaggedRosterEntry[];
   compact?: boolean;
+  limit?: number;
 }) => {
   const formation = getFormationByCode(formationCode);
   if (!formation) return null;
+  const slots = extendSoccerSlots(formation, limit ?? formation.slots.length);
   const playerBySlot = new Map(
     players
       .filter((entry) => entry.slotId)
@@ -1141,7 +1441,7 @@ const SoccerFormationBoard = ({
         <span className="pitch-line penalty-box top" />
         <span className="pitch-line penalty-box bottom" />
       </div>
-      {formation.slots.map((slot) => {
+      {slots.map((slot) => {
         const player = playerBySlot.get(slot.id);
         return (
           <div
@@ -1158,6 +1458,72 @@ const SoccerFormationBoard = ({
   );
 };
 
+const SportFormationBoard = ({
+  sport,
+  slots,
+  players,
+  compact = false
+}: {
+  sport: CustomSport;
+  slots: SportSlot[];
+  players: TaggedRosterEntry[];
+  compact?: boolean;
+}) => {
+  const playerBySlot = new Map(
+    players
+      .filter((entry) => entry.slotId)
+      .map((entry) => [entry.slotId as string, entry])
+  );
+  return (
+    <div className={`sport-board ${sport} ${compact ? "compact" : ""}`}>
+      {slots.map((slot) => {
+        const player = playerBySlot.get(slot.id);
+        return (
+          <div
+            key={slot.id}
+            className={`sport-slot ${player ? "filled" : ""}`}
+            style={{ left: `${slot.x}%`, top: `${slot.y}%` }}
+          >
+            <span className="label">{slot.label}</span>
+            {player && <strong>{player.playerName}</strong>}
+          </div>
+        );
+      })}
+    </div>
+  );
+};
+
+const FormationDisplay = ({
+  sport,
+  formationCode,
+  players,
+  limit,
+  compact
+}: {
+  sport: SportMode;
+  formationCode?: string | null;
+  players: TaggedRosterEntry[];
+  limit: number;
+  compact?: boolean;
+}) => {
+  if (sport === "soccer" && formationCode) {
+    return (
+      <SoccerFormationBoard
+        formationCode={formationCode}
+        players={players}
+        compact={compact}
+        limit={limit}
+      />
+    );
+  }
+  if (sport === "cricket") return null;
+  if (sport === "basketball" || sport === "football" || sport === "rugby") {
+    const slots = buildCustomSportSlots(sport, limit);
+    return <SportFormationBoard sport={sport} slots={slots} players={players} compact={compact} />;
+  }
+  return null;
+};
+
 const InfoStat = ({ label, value }: { label: string; value: string }) => (
   <div className="info-card">
     <span>{label}</span>
@@ -1170,15 +1536,27 @@ const LiveAuctionBoard = ({
   participants,
   selfParticipant,
   notify,
-  voiceControl
+  voiceControl,
+  audioEnabled,
+  onToggleAudio
 }: {
   auction: Auction;
   participants: Participant[];
   selfParticipant: Participant | null;
   notify: (type: ToastState["type"], text: string) => void;
   voiceControl: VoiceButtonControl | null;
+  audioEnabled: boolean;
+  onToggleAudio: () => void;
 }) => {
   const queue = useMemo(() => buildPlayerQueue(auction.categories), [auction.categories]);
+  const participantDisplayMap = useMemo(() => {
+    const map = new Map<string, string>();
+    participants.forEach((player) =>
+      map.set(player.id, getParticipantDisplayName(player, auction, "default"))
+    );
+    return map;
+  }, [participants, auction]);
+  const selfIsSpectator = selfParticipant?.participating === false;
   const activeSlot = auction.manualPlayer ?? queue[auction.currentPlayerIndex] ?? null;
   const isManual = Boolean(auction.manualPlayer);
   const { msRemaining } = useCountdown(auction.countdownEndsAt);
@@ -1238,9 +1616,13 @@ const LiveAuctionBoard = ({
       queue.map((slot, index) => {
         const entry = completedMap.get(slot.key);
         if (index < auction.currentPlayerIndex) {
+          const winnerLabel =
+            entry?.winnerId && participantDisplayMap.get(entry.winnerId)
+              ? participantDisplayMap.get(entry.winnerId)
+              : entry?.winnerAlias ?? entry?.winnerName ?? "Unknown";
           const soldText =
             entry?.result === "sold"
-              ? `Sold to ${entry?.winnerName ?? "Unknown"} (${formatCurrency(entry?.finalBid ?? 0)})`
+              ? `Sold to ${winnerLabel} (${formatCurrency(entry?.finalBid ?? 0)})`
               : "Unsold";
           return { slot, status: soldText, tone: entry?.result === "sold" ? "sold" : "unsold" };
         }
@@ -1260,29 +1642,29 @@ const LiveAuctionBoard = ({
     [queue, auction.currentPlayerIndex, completedMap, auction.isPaused, isManual]
   );
 
-    const handleBid = async () => {
-      if (!selfParticipant || !activeSlot || auction.isPaused) {
+  const handleBid = async () => {
+    if (!selfParticipant || selfIsSpectator || !activeSlot || auction.isPaused) {
+      return;
+    }
+    try {
+      const bidAmount = Number(bidInput || "0");
+      if (!bidAmount || bidAmount < minimumBid) {
+        notify("error", `Bid at least ${formatCurrency(minimumBid)}.`);
         return;
       }
-      try {
-        const bidAmount = Number(bidInput || "0");
-        if (!bidAmount || bidAmount < minimumBid) {
-          notify("error", `Bid at least ${formatCurrency(minimumBid)}.`);
-          return;
-        }
-        await placeBid({
-          auctionId: auction.id,
-          clientId: selfParticipant.id,
-          bidderName: selfParticipant.name,
-          amount: bidAmount
-        });
+      await placeBid({
+        auctionId: auction.id,
+        clientId: selfParticipant.id,
+        bidderName: getParticipantDisplayName(selfParticipant, auction, "default"),
+        amount: bidAmount
+      });
       } catch (error) {
         notify("error", (error as Error).message);
       }
     };
 
   const handlePass = async () => {
-    if (!selfParticipant || !activeSlot || auction.isPaused) return;
+    if (!selfParticipant || selfIsSpectator || !activeSlot || auction.isPaused) return;
     try {
       await skipPlayer({ auctionId: auction.id, clientId: selfParticipant.id });
     } catch (error) {
@@ -1372,11 +1754,109 @@ const LiveAuctionBoard = ({
     });
     setDragKey(null);
   };
-  const otherPlayers = participants.filter((player) => player.id !== selfParticipant?.id);
+  const otherPlayers = participants.filter(
+    (player) => player.id !== selfParticipant?.id && player.participating !== false
+  );
   const unsoldPlayers = useMemo(
     () => (auction.completedPlayers ?? []).filter((entry) => entry.result === "unsold"),
     [auction.completedPlayers]
   );
+  const soldHistory = useMemo(
+    () =>
+      (auction.completedPlayers ?? []).filter(
+        (entry): entry is CompletedPlayerEntry & { finalBid: number } =>
+          entry.result === "sold" && typeof entry.finalBid === "number"
+      ),
+    [auction.completedPlayers]
+  );
+  const recordSale = useMemo(() => {
+    if (soldHistory.length < 3) return null;
+    return soldHistory.reduce<CompletedPlayerEntry & { finalBid: number } | null>((prev, current) => {
+      if (!prev) return current;
+      return current.finalBid > (prev.finalBid ?? 0) ? current : prev;
+    }, soldHistory[0]);
+  }, [soldHistory]);
+  const recordEntryKey = recordSale?.id ?? null;
+  const lastAnnouncedRef = useRef<string | null>(null);
+  const lastBidVoiceRef = useRef<string | null>(null);
+  const lastSaleToneRef = useRef<string | null>(null);
+
+  const speakAnnouncement = useCallback(
+    (text: string) => {
+      if (!audioEnabled) return;
+      void playAnnouncement(text).catch(() => {});
+    },
+    [audioEnabled]
+  );
+
+  useEffect(() => {
+    if (!audioEnabled || !activeSlot) return;
+    if (activeSlot.key === lastAnnouncedRef.current) return;
+    lastAnnouncedRef.current = activeSlot.key;
+    lastBidVoiceRef.current = null;
+    speakAnnouncement(`Now drafting ${activeSlot.name}`);
+  }, [audioEnabled, activeSlot?.key, activeSlot?.name, speakAnnouncement]);
+
+  useEffect(() => {
+    if (!audioEnabled || !activeSlot || !auction.activeBid) return;
+    if (auction.activeBid.bidderId === selfParticipant?.id) return;
+    const signature = `${activeSlot.key}-${auction.activeBid.amount}`;
+    if (signature === lastBidVoiceRef.current) return;
+    lastBidVoiceRef.current = signature;
+    speakAnnouncement(`${activeSlot.name} going for ${formatCurrency(auction.activeBid.amount)}`);
+  }, [
+    audioEnabled,
+    auction.activeBid?.amount,
+    auction.activeBid?.bidderId,
+    activeSlot?.key,
+    speakAnnouncement,
+    selfParticipant?.id
+  ]);
+
+  useEffect(() => {
+    if (!audioEnabled) {
+      lastAnnouncedRef.current = null;
+      lastBidVoiceRef.current = null;
+    }
+  }, [audioEnabled]);
+
+  const playToneSequence = useCallback(
+    (frequencies: number[]) => {
+      if (!audioEnabled) return;
+      const ctx = getVoiceAudioContext();
+      if (!ctx) return;
+      const now = ctx.currentTime;
+      frequencies.forEach((freq, index) => {
+        const oscillator = ctx.createOscillator();
+        const gain = ctx.createGain();
+        oscillator.type = "sine";
+        oscillator.frequency.value = freq;
+        oscillator.connect(gain).connect(ctx.destination);
+        const start = now + index * 0.15;
+        const end = start + 0.3;
+        gain.gain.setValueAtTime(0.0001, start);
+        gain.gain.linearRampToValueAtTime(0.08, start + 0.05);
+        gain.gain.exponentialRampToValueAtTime(0.0001, end);
+        oscillator.start(start);
+        oscillator.stop(end);
+      });
+    },
+    [audioEnabled]
+  );
+
+  useEffect(() => {
+    if (!audioEnabled) return;
+    const entries = auction.completedPlayers ?? [];
+    if (!entries.length) return;
+    const latest = entries[entries.length - 1];
+    if (!latest || latest.id === lastSaleToneRef.current) return;
+    if (latest.result === "sold") {
+      playToneSequence([720, 880, 1040]);
+    } else if (latest.result === "unsold") {
+      playToneSequence([420, 310]);
+    }
+    lastSaleToneRef.current = latest.id;
+  }, [audioEnabled, auction.completedPlayers, playToneSequence]);
 
   const timerLabel =
     auction.isPaused || !activeSlot
@@ -1385,7 +1865,8 @@ const LiveAuctionBoard = ({
         : "--:--"
       : formatTimer(msRemaining);
 
-  const bidDisabled = !selfParticipant || !activeSlot || auction.isPaused || isHighestBidder;
+  const bidDisabled =
+    !selfParticipant || selfIsSpectator || !activeSlot || auction.isPaused || isHighestBidder;
 
   const ledgerWithIndices = useMemo(
     () => playerLedger.map((entry, index) => ({ ...entry, queueIndex: index })),
@@ -1443,7 +1924,17 @@ const LiveAuctionBoard = ({
         <div className="deck-head">
           <div className="deck-copy">
             <p className="eyebrow">On deck</p>
-            <h2>{activeSlot ? activeSlot.name : "No players left"}</h2>
+            <div className="deck-title-row">
+              <h2>{activeSlot ? activeSlot.name : "No players left"}</h2>
+              <button
+                type="button"
+                className={`audio-toggle ${audioEnabled ? "active" : ""}`}
+                onClick={onToggleAudio}
+                aria-label={audioEnabled ? "Mute auction announcer" : "Enable auction announcer"}
+              >
+                <span aria-hidden="true">{audioEnabled ? "🔊" : "🔇"}</span>
+              </button>
+            </div>
             {activeSlot && (
               <p>
                 Category {activeSlot.categoryLabel} - Base {formatCurrency(activeSlot.basePrice)}
@@ -1473,9 +1964,9 @@ const LiveAuctionBoard = ({
               {auction.finalizationOpen ? "Final teams live" : "Go to final teams"}
             </button>
           </div>
-        )}
-      </div>
-      <div className="bid-card">
+          )}
+        </div>
+        <div className="bid-card">
         <div className="bid-header">
           <h3>Current bid</h3>
           {auction.activeBid ? (
@@ -1536,27 +2027,33 @@ const LiveAuctionBoard = ({
       <div className="roster-grid live-roster">
         <div className="team-card">
           <div className="team-card__header">
-            <h3>My Team</h3>
-            <span>
-              {formatCurrency(selfParticipant?.budgetRemaining ?? 0)} left, {playersPurchased} signed
-            </span>
+            <h3>{selfIsSpectator ? "Host mode" : "My Team"}</h3>
+            {!selfIsSpectator && (
+              <span>
+                {formatCurrency(selfParticipant?.budgetRemaining ?? 0)} left, {playersPurchased} signed
+              </span>
+            )}
           </div>
-          <ul className="team-roster">
-            {orderedRoster.length === 0 && <li>No players yet.</li>}
-            {orderedRoster.map((player, index) => (
-              <li
-                key={player.key}
-                draggable
-                onDragStart={() => handleDragStart(player.key)}
-                onDragOver={handleDragOver}
-                onDrop={() => handleDrop(player.key)}
-                className={dragKey === player.key ? "dragging" : ""}
-              >
-                <span className="player-name">{player.playerName}</span>
-                <span className="player-price">{formatCurrency(player.price)}</span>
-              </li>
-            ))}
-          </ul>
+          {selfIsSpectator ? (
+            <p className="muted-label">You're spectating this auction. Use admin controls to run the show.</p>
+          ) : (
+            <ul className="team-roster">
+              {orderedRoster.length === 0 && <li>No players yet.</li>}
+              {orderedRoster.map((player, index) => (
+                <li
+                  key={player.key}
+                  draggable
+                  onDragStart={() => handleDragStart(player.key)}
+                  onDragOver={handleDragOver}
+                  onDrop={() => handleDrop(player.key)}
+                  className={dragKey === player.key ? "dragging" : ""}
+                >
+                  <span className="player-name">{player.playerName}</span>
+                  <span className="player-price">{formatCurrency(player.price)}</span>
+                </li>
+              ))}
+            </ul>
+          )}
         </div>
         <div className="team-card">
           <div className="team-card__header">
@@ -1565,7 +2062,7 @@ const LiveAuctionBoard = ({
           <ul className="coach-summary">
             {otherPlayers.map((player) => (
               <li key={player.id}>
-                <strong>{player.name}</strong>
+                <strong>{getParticipantDisplayName(player, auction, "default")}</strong>
                 <div>
                   <span>{formatCurrency(player.budgetRemaining)} left</span>
                   <span>
@@ -1592,7 +2089,9 @@ const LiveAuctionBoard = ({
             ) : (
               <li
                 key={`${item.entry.slot.key}-${item.entry.queueIndex}`}
-                className={`player-table ${item.entry.tone ?? ""}`}
+                className={`player-table ${item.entry.tone ?? ""} ${
+                  recordEntryKey && item.entry.slot.key === recordEntryKey ? "record" : ""
+                }`}
               >
                 <div>
                   <strong>
@@ -1604,6 +2103,9 @@ const LiveAuctionBoard = ({
                   <p>
                     Cat {item.entry.slot.categoryLabel} - Base {formatCurrency(item.entry.slot.basePrice)}
                   </p>
+                  {recordEntryKey && item.entry.slot.key === recordEntryKey && (
+                    <span className="record-flag">Most expensive pick</span>
+                  )}
                 </div>
                 <span>{item.entry.status}</span>
               </li>
@@ -1659,7 +2161,14 @@ const TeamConfirmationPanel = ({
     () => roster.map((player, index) => ({ ...player, key: `${player.playerName}-${index}` })),
     [roster]
   );
-  const [sport, setSport] = useState<SportMode>(finalRoster.length ? finalSport : "cricket");
+  const [sport, setSport] = useState<SportMode>(finalRoster.length ? finalSport : "soccer");
+  const sportOptions: { value: SportMode; label: string }[] = [
+    { value: "soccer", label: "Soccer" },
+    { value: "cricket", label: "Cricket" },
+    { value: "basketball", label: "Basketball" },
+    { value: "football", label: "Football" },
+    { value: "rugby", label: "Rugby" }
+  ];
   const cricketSlots = useMemo(() => {
     return Array.from({ length: limit }).map((_, index) => ({
       id: `cricket-${index}`,
@@ -1678,6 +2187,45 @@ const TeamConfirmationPanel = ({
     });
     setCricketWicketSlot((prev) => (prev && cricketSlots.some((slot) => slot.id === prev) ? prev : null));
   }, [cricketSlots]);
+  const defaultBasketballFormation =
+    finalSport === "basketball" && finalFormation ? finalFormation.code : CUSTOM_SPORT_PRESETS.basketball.formations[0].code;
+  const defaultFootballFormation =
+    finalSport === "football" && finalFormation ? finalFormation.code : CUSTOM_SPORT_PRESETS.football.formations[0].code;
+  const defaultRugbyFormation =
+    finalSport === "rugby" && finalFormation ? finalFormation.code : CUSTOM_SPORT_PRESETS.rugby.formations[0].code;
+  const [basketballFormation, setBasketballFormation] = useState(defaultBasketballFormation);
+  const [footballFormation, setFootballFormation] = useState(defaultFootballFormation);
+  const [rugbyFormation, setRugbyFormation] = useState(defaultRugbyFormation);
+  const basketballSlots = useMemo(
+    () => buildCustomSportSlots("basketball", limit, basketballFormation),
+    [limit, basketballFormation]
+  );
+  const footballSlots = useMemo(
+    () => buildCustomSportSlots("football", limit, footballFormation),
+    [limit, footballFormation]
+  );
+  const rugbySlots = useMemo(
+    () => buildCustomSportSlots("rugby", limit, rugbyFormation),
+    [limit, rugbyFormation]
+  );
+  const [basketballAssignments, setBasketballAssignments] = useState<Record<string, string | null>>(() =>
+    syncAssignments(basketballSlots)
+  );
+  const [footballAssignments, setFootballAssignments] = useState<Record<string, string | null>>(() =>
+    syncAssignments(footballSlots)
+  );
+  const [rugbyAssignments, setRugbyAssignments] = useState<Record<string, string | null>>(() =>
+    syncAssignments(rugbySlots)
+  );
+  useEffect(() => {
+    setBasketballAssignments((prev) => syncAssignments(basketballSlots, prev));
+  }, [basketballSlots]);
+  useEffect(() => {
+    setFootballAssignments((prev) => syncAssignments(footballSlots, prev));
+  }, [footballSlots]);
+  useEffect(() => {
+    setRugbyAssignments((prev) => syncAssignments(rugbySlots, prev));
+  }, [rugbySlots]);
 
   const handleCricketAssign = (slotId: string, playerKey: string) => {
     setCricketAssignments((prev) => {
@@ -1703,6 +2251,18 @@ const TeamConfirmationPanel = ({
     () => cricketSlots.every((slot) => Boolean(cricketAssignments[slot.id])),
     [cricketSlots, cricketAssignments]
   );
+  const basketballFilled = useMemo(
+    () => basketballSlots.every((slot) => Boolean(basketballAssignments[slot.id])),
+    [basketballSlots, basketballAssignments]
+  );
+  const footballFilled = useMemo(
+    () => footballSlots.every((slot) => Boolean(footballAssignments[slot.id])),
+    [footballSlots, footballAssignments]
+  );
+  const rugbyFilled = useMemo(
+    () => rugbySlots.every((slot) => Boolean(rugbyAssignments[slot.id])),
+    [rugbySlots, rugbyAssignments]
+  );
 
   const buildAssignmentMap = useCallback(
     (code: string, prev?: Record<string, string | null>) => {
@@ -1725,7 +2285,11 @@ const TeamConfirmationPanel = ({
   useEffect(() => {
     setSoccerAssignments((prev) => buildAssignmentMap(soccerFormation, prev));
   }, [soccerFormation, buildAssignmentMap]);
-
+  const soccerFormationDef = getFormationByCode(soccerFormation);
+  const soccerSlots = useMemo(
+    () => extendSoccerSlots(soccerFormationDef, limit),
+    [soccerFormationDef?.code, limit]
+  );
   const handleSlotAssignment = (slotId: string, playerKey: string) => {
     setSoccerAssignments((prev) => {
       const next = { ...prev };
@@ -1742,11 +2306,160 @@ const TeamConfirmationPanel = ({
     });
   };
 
-  const soccerFormationDef = getFormationByCode(soccerFormation);
-  const soccerSlots = soccerFormationDef?.slots ?? [];
+  const assignUnique = (
+    setter: React.Dispatch<React.SetStateAction<Record<string, string | null>>>,
+    slotId: string,
+    playerKey: string
+  ) => {
+    setter((prev) => {
+      const next = { ...prev };
+      const sanitized = playerKey || "";
+      if (sanitized) {
+        Object.entries(next).forEach(([key, value]) => {
+          if (key !== slotId && value === sanitized) {
+            next[key] = null;
+          }
+        });
+      }
+      next[slotId] = sanitized || null;
+      return next;
+    });
+  };
+
+  const handleCustomAssignment = (mode: CustomSport, slotId: string, playerKey: string) => {
+    switch (mode) {
+      case "basketball":
+        assignUnique(setBasketballAssignments, slotId, playerKey);
+        break;
+      case "football":
+        assignUnique(setFootballAssignments, slotId, playerKey);
+        break;
+      case "rugby":
+        assignUnique(setRugbyAssignments, slotId, playerKey);
+        break;
+      default:
+        break;
+    }
+  };
+
+  const buildTaggedEntries = useCallback(
+    (slots: SportSlot[], assignments: Record<string, string | null>) =>
+      slots
+        .map((slot) => {
+          const key = assignments[slot.id];
+          if (!key) return null;
+          const player = rosterWithKeys.find((entry) => entry.key === key);
+          if (!player) return null;
+          return {
+            playerName: player.playerName,
+            categoryLabel: player.categoryLabel,
+            price: player.price,
+            slotId: slot.id,
+            slotLabel: slot.label
+          };
+        })
+        .filter(Boolean) as TaggedRosterEntry[],
+    [rosterWithKeys]
+  );
+
+  const renderCustomSportBuilder = (mode: CustomSport) => {
+    const { slots, assignments, formationCode, setFormation } = getCustomSportConfig(mode);
+    const assignedEntries = buildTaggedEntries(slots, assignments);
+    const shortage = rosterWithKeys.length < slots.length;
+    return (
+      <div className="sport-builder">
+        <div className="formation-select">
+          <label htmlFor={`${mode}-formation`}>Formation</label>
+          <select
+            id={`${mode}-formation`}
+            value={formationCode}
+            onChange={(event) => setFormation(event.target.value)}
+          >
+            {CUSTOM_SPORT_PRESETS[mode].formations.map((formation) => (
+              <option key={formation.code} value={formation.code}>
+                {formation.label}
+              </option>
+            ))}
+          </select>
+        </div>
+        <SportFormationBoard sport={mode} slots={slots} players={assignedEntries} />
+        <div className="formation-editor">
+          {shortage && (
+            <p className="muted-label warning">
+              Need {slots.length} players to fill this layout. You currently have {rosterWithKeys.length}.
+            </p>
+          )}
+          <ul>
+            {slots.map((slot) => (
+              <li key={slot.id}>
+                <span>{slot.label}</span>
+                <select
+                  value={assignments[slot.id] ?? ""}
+                  onChange={(event) => handleCustomAssignment(mode, slot.id, event.target.value)}
+                >
+                  <option value="">Unassigned</option>
+                  {rosterWithKeys.map((player) => {
+                    const assignedElsewhere =
+                      assignments[slot.id] !== player.key &&
+                      Object.values(assignments).includes(player.key);
+                    return (
+                      <option key={player.key} value={player.key} disabled={assignedElsewhere}>
+                        {player.playerName} - {formatCurrency(player.price)}
+                      </option>
+                    );
+                  })}
+                </select>
+              </li>
+            ))}
+          </ul>
+        </div>
+      </div>
+    );
+  };
+
+  const getCustomSportConfig = (mode: CustomSport) => {
+    switch (mode) {
+      case "basketball":
+        return {
+          slots: basketballSlots,
+          assignments: basketballAssignments,
+          setAssignments: setBasketballAssignments,
+          filled: basketballFilled,
+          formationCode: basketballFormation,
+          setFormation: setBasketballFormation
+        };
+      case "football":
+        return {
+          slots: footballSlots,
+          assignments: footballAssignments,
+          setAssignments: setFootballAssignments,
+          filled: footballFilled,
+          formationCode: footballFormation,
+          setFormation: setFootballFormation
+        };
+      case "rugby":
+        return {
+          slots: rugbySlots,
+          assignments: rugbyAssignments,
+          setAssignments: setRugbyAssignments,
+          filled: rugbyFilled,
+          formationCode: rugbyFormation,
+          setFormation: setRugbyFormation
+        };
+      default:
+        return {
+          slots: [],
+          assignments: {},
+          setAssignments: () => {},
+          filled: false,
+          formationCode: "",
+          setFormation: () => {}
+        };
+    }
+  };
+
   const soccerAssignmentsList = useMemo(() => {
-    if (!soccerFormationDef) return [];
-    return soccerFormationDef.slots
+    return soccerSlots
       .map((slot) => {
         const playerKey = soccerAssignments[slot.id];
         if (!playerKey) return null;
@@ -1782,9 +2495,15 @@ const TeamConfirmationPanel = ({
         notify("error", "Assign every position before submitting.");
         return;
       }
-    } else {
+    } else if (sport === "cricket") {
       if (!cricketAllFilled) {
         notify("error", "Assign every batting slot before submitting.");
+        return;
+      }
+    } else {
+      const config = getCustomSportConfig(sport as CustomSport);
+      if (!config.filled) {
+        notify("error", "Assign every position before submitting.");
         return;
       }
     }
@@ -1794,7 +2513,7 @@ const TeamConfirmationPanel = ({
     let formationLabel: string | undefined;
 
     if (sport === "soccer" && soccerFormationDef) {
-      payload = soccerFormationDef.slots.map((slot) => {
+      payload = soccerSlots.map((slot) => {
         const playerKey = soccerAssignments[slot.id];
         const player = rosterWithKeys.find((entry) => entry.key === playerKey);
         if (!player) {
@@ -1811,7 +2530,7 @@ const TeamConfirmationPanel = ({
       });
       formationCode = soccerFormationDef.code;
       formationLabel = soccerFormationDef.label;
-    } else {
+    } else if (sport === "cricket") {
       payload = cricketSlots.map((slot) => {
         const playerKey = cricketAssignments[slot.id];
         const player = rosterWithKeys.find((entry) => entry.key === playerKey);
@@ -1827,6 +2546,26 @@ const TeamConfirmationPanel = ({
           tag: cricketWicketSlot === slot.id ? "WK" : ""
         };
       });
+    } else {
+      const mode = sport as CustomSport;
+      const { slots, assignments, formationCode: selectedCode } = getCustomSportConfig(mode);
+      payload = slots.map((slot) => {
+        const playerKey = assignments[slot.id];
+        const player = rosterWithKeys.find((entry) => entry.key === playerKey);
+        if (!player) {
+          throw new Error("Missing player assignment.");
+        }
+        return {
+          playerName: player.playerName,
+          categoryLabel: player.categoryLabel,
+          price: player.price,
+          slotId: slot.id,
+          slotLabel: slot.label
+        };
+      });
+      const meta = getCustomFormation(mode, selectedCode);
+      formationCode = meta?.code;
+      formationLabel = meta?.label ?? CUSTOM_SPORT_PRESETS[mode].displayLabel;
     }
 
     try {
@@ -1844,10 +2583,42 @@ const TeamConfirmationPanel = ({
     }
   };
 
-  const otherPlayers = participants.filter((player) => player.id !== selfParticipant?.id);
+  const otherPlayers = participants.filter(
+    (player) => player.id !== selfParticipant?.id && player.participating !== false
+  );
+
+  if (selfParticipant?.participating === false) {
+    return (
+      <section className="panel-card">
+        <PanelVoiceButton control={voiceControl} />
+        <h2>Host overview</h2>
+        <p className="muted-label">
+          You're running this auction but not submitting a lineup. Track everyone else's picks and wait
+          for them to finish.
+        </p>
+        <div className="roster-card" style={{ marginTop: "1.5rem" }}>
+          <h3>Players</h3>
+          <ul className="participant-list">
+            {participants
+              .filter((player) => player.participating !== false)
+              .map((player) => (
+                <li key={player.id}>
+                  <div>
+                    <strong>{getParticipantDisplayName(player, auction, "default")}</strong>
+                    <p>{player.roster.length} picks</p>
+                  </div>
+                </li>
+              ))}
+          </ul>
+        </div>
+      </section>
+    );
+  }
 
   if (finalRoster.length > 0) {
     const submittedSoccer = finalSport === "soccer" && finalFormation;
+    const submittedCustom =
+      finalSport !== "soccer" && finalSport !== "cricket" && Boolean(finalRoster.length);
     return (
       <section className="panel-card">
         <PanelVoiceButton control={voiceControl} />
@@ -1855,11 +2626,30 @@ const TeamConfirmationPanel = ({
         {submittedSoccer ? (
           <>
             <p className="muted-label">{finalFormation?.label}</p>
-            <SoccerFormationBoard formationCode={finalFormation!.code} players={finalRoster} />
+            <SoccerFormationBoard formationCode={finalFormation!.code} players={finalRoster} limit={limit} />
             <ul className="mini-roster">
               {finalRoster.map((player, index) => (
                 <li key={`${player.playerName}-${index}`}>
                   {player.slotLabel ?? player.tag ?? `#${index + 1}`} - {player.playerName}
+                </li>
+              ))}
+            </ul>
+          </>
+        ) : submittedCustom ? (
+          <>
+            <p className="muted-label">
+              {CUSTOM_SPORT_PRESETS[finalSport as CustomSport]?.displayLabel ?? "Formation"}
+            </p>
+            <SportFormationBoard
+              sport={finalSport as CustomSport}
+              slots={buildCustomSportSlots(finalSport as CustomSport, limit)}
+              players={finalRoster}
+            />
+            <ul className="price-list">
+              {finalRoster.map((player, index) => (
+                <li key={`${player.playerName}-${index}`}>
+                  <strong>{player.playerName}</strong>
+                  <span className="price-value">{formatCurrency(player.price)}</span>
                 </li>
               ))}
             </ul>
@@ -1883,7 +2673,7 @@ const TeamConfirmationPanel = ({
             {otherPlayers.map((player) => (
               <li key={player.id}>
                 <div>
-                  <strong>{player.name}</strong>
+                  <strong>{getParticipantDisplayName(player, auction, "default")}</strong>
                   <p>
                     {player.finalRoster?.length ?? player.roster.length} picks{" "}
                     {player.hasSubmittedTeam ? "(Submitted)" : ""}
@@ -1893,7 +2683,9 @@ const TeamConfirmationPanel = ({
                   {player.hasSubmittedTeam
                     ? player.finalRosterSport === "soccer"
                       ? player.finalRosterFormation?.label ?? "Soccer"
-                      : "Cricket"
+                      : player.finalRosterSport === "cricket"
+                        ? "Cricket"
+                        : CUSTOM_SPORT_PRESETS[player.finalRosterSport as CustomSport]?.displayLabel ?? "Lineup"
                     : "Pending"}
                 </span>
               </li>
@@ -1908,20 +2700,18 @@ const TeamConfirmationPanel = ({
     <section className="panel-card">
       <PanelVoiceButton control={voiceControl} />
       <h2>Lock your final {limit}</h2>
-      <p className="muted-label">Switch between cricket order or soccer formation.</p>
+      <p className="muted-label">Switch between cricket order or stadium boards for other sports.</p>
       <div className="sport-toggle">
-        <button
-          className={`btn ghost ${sport === "cricket" ? "active" : ""}`}
-          onClick={() => setSport("cricket")}
-        >
-          Cricket
-        </button>
-        <button
-          className={`btn ghost ${sport === "soccer" ? "active" : ""}`}
-          onClick={() => setSport("soccer")}
-        >
-          Soccer
-        </button>
+        {sportOptions.map((option) => (
+          <button
+            key={option.value}
+            className={`btn ghost ${sport === option.value ? "active" : ""}`}
+            onClick={() => setSport(option.value)}
+            type="button"
+          >
+            {option.label}
+          </button>
+        ))}
       </div>
       {sport === "cricket" ? (
         <div className="cricket-builder">
@@ -1981,7 +2771,7 @@ const TeamConfirmationPanel = ({
             </ul>
           </div>
         </div>
-      ) : (
+      ) : sport === "soccer" ? (
         <div className="soccer-builder">
           <div className="formation-select">
             <label htmlFor="formation-select">Formation</label>
@@ -2004,7 +2794,7 @@ const TeamConfirmationPanel = ({
             )}
           </div>
           <div className="soccer-layout">
-            <SoccerFormationBoard formationCode={soccerFormation} players={soccerAssignmentsList} />
+            <SoccerFormationBoard formationCode={soccerFormation} players={soccerAssignmentsList} limit={limit} />
             <div className="formation-editor">
               <ul>
                 {soccerSlots.map((slot) => (
@@ -2045,6 +2835,8 @@ const TeamConfirmationPanel = ({
             </ul>
           </div>
         </div>
+      ) : (
+        renderCustomSportBuilder(sport as CustomSport)
       )}
       <button
         className="btn accent"
@@ -2059,19 +2851,21 @@ const TeamConfirmationPanel = ({
           {otherPlayers.map((player) => (
             <li key={player.id}>
               <div>
-                <strong>{player.name}</strong>
+                <strong>{getParticipantDisplayName(player, auction, "default")}</strong>
                 <p>
                   {player.finalRoster?.length ?? player.roster.length} picks{" "}
                   {player.hasSubmittedTeam ? "(Submitted)" : ""}
                 </p>
               </div>
-              <span>
-                {player.hasSubmittedTeam
-                  ? player.finalRosterSport === "soccer"
-                    ? player.finalRosterFormation?.label ?? "Soccer"
-                    : "Cricket"
-                  : "Pending"}
-              </span>
+                <span>
+                  {player.hasSubmittedTeam
+                    ? player.finalRosterSport === "soccer"
+                      ? player.finalRosterFormation?.label ?? "Soccer"
+                      : player.finalRosterSport === "cricket"
+                        ? "Cricket"
+                        : CUSTOM_SPORT_PRESETS[player.finalRosterSport as CustomSport]?.displayLabel ?? "Lineup"
+                    : "Pending"}
+                </span>
             </li>
           ))}
         </ul>
@@ -2094,7 +2888,9 @@ const RankingPanel = ({
   notify: (type: ToastState["type"], text: string) => void;
   voiceControl: VoiceButtonControl | null;
 }) => {
-  const others = participants.filter((player) => player.id !== selfParticipant?.id);
+  const others = participants.filter(
+    (player) => player.id !== selfParticipant?.id && player.participating !== false
+  );
   const [order, setOrder] = useState(others.map((player) => player.id));
 
   useEffect(() => {
@@ -2137,19 +2933,21 @@ const RankingPanel = ({
           const lineup =
             target.finalRoster && target.finalRoster.length ? target.finalRoster : target.roster;
           const showFormation =
-            target.finalRosterSport === "soccer" &&
-            Boolean(target.finalRosterFormation?.code && target.finalRoster?.length);
+            target.finalRosterSport !== "cricket" && Boolean(target.finalRoster?.length);
           return (
             <li key={participantId}>
               <div>
                 <strong>
-                  #{index + 1} {target.name}
+                  #{index + 1} {getParticipantDisplayName(target, auction, "default")}
                 </strong>
-                {showFormation && target.finalRoster && target.finalRosterFormation ? (
+                {showFormation ? (
                   <div className="ranking-formation">
-                    <SoccerFormationBoard
-                      formationCode={target.finalRosterFormation.code}
-                      players={target.finalRoster}
+                    <FormationDisplay
+                      sport={target.finalRosterSport ?? "cricket"}
+                      formationCode={target.finalRosterFormation?.code ?? null}
+                      players={target.finalRoster ?? []}
+                      limit={auction.playersPerTeam}
+                      compact={target.finalRosterSport !== "soccer"}
                     />
                   </div>
                 ) : (
@@ -2190,9 +2988,12 @@ const RankingPanel = ({
       <div className="ranking-status">
         <h3>Status</h3>
         <ul>
-          {participants.map((player) => (
+          {participants
+            .filter((player) => player.participating !== false)
+            .map((player) => (
             <li key={player.id}>
-              {player.name} -{" "}
+              {getParticipantDisplayName(player, auction, "default")}{" "}
+              -{" "}
               {player.id === selfParticipant?.id
                 ? selfParticipant.rankingSubmitted
                   ? "Done"
@@ -2247,20 +3048,21 @@ const ResultsBoard = ({
         </table>
       )}
       <div className="results-rosters">
-        {participants.map((player) => {
+        {participants.filter((player) => player.participating !== false).map((player) => {
           const lineup =
             player.finalRoster && player.finalRoster.length ? player.finalRoster : player.roster;
           const showFormation =
-            player.finalRosterSport === "soccer" &&
-            Boolean(player.finalRosterFormation?.code && player.finalRoster?.length);
+            player.finalRosterSport !== "cricket" && Boolean(player.finalRoster?.length);
           return (
             <div key={player.id} className="roster-card">
               <h4>{player.name}</h4>
               <div className={`roster-body ${showFormation ? "with-board" : ""}`}>
-                {showFormation && player.finalRoster && player.finalRosterFormation && (
-                  <SoccerFormationBoard
-                    formationCode={player.finalRosterFormation.code}
+                {showFormation && player.finalRoster && (
+                  <FormationDisplay
+                    sport={player.finalRosterSport ?? "cricket"}
+                    formationCode={player.finalRosterFormation?.code ?? null}
                     players={player.finalRoster}
+                    limit={auction.playersPerTeam}
                   />
                 )}
                 <ul className="price-list">
@@ -2318,9 +3120,9 @@ const useAdminAutomation = (
       rankingTriggered.current = false;
       return;
     }
+    const activePlayers = participants.filter((player) => player.participating !== false);
     const everyoneSubmitted =
-      participants.length > 0 &&
-      participants.every((player) => player.hasSubmittedTeam);
+      activePlayers.length > 0 && activePlayers.every((player) => player.hasSubmittedTeam);
     if (everyoneSubmitted && !rankingTriggered.current) {
       rankingTriggered.current = true;
       markAuctionAsRanking(auction.id).catch((error) =>
@@ -2334,9 +3136,9 @@ const useAdminAutomation = (
       resultsTriggered.current = false;
       return;
     }
+    const activePlayers = participants.filter((player) => player.participating !== false);
     const everyoneRanked =
-      participants.length > 0 &&
-      participants.every((player) => player.rankingSubmitted);
+      activePlayers.length > 0 && activePlayers.every((player) => player.rankingSubmitted);
     if (everyoneRanked && !resultsTriggered.current) {
       resultsTriggered.current = true;
       finalizeResults(auction.id).catch((error) =>
@@ -2347,5 +3149,3 @@ const useAdminAutomation = (
 };
 
 export default App;
-
-
