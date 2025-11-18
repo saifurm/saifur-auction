@@ -1195,7 +1195,7 @@ const LobbyView = ({
           </div>
           {!isAdmin && <p className="muted-label">Waiting for admin to start</p>}
           {preStartCountdown > 0 && (
-            <div className="prestart-banner">
+            <div className="prestart-banner floating">
               <span>Auction begins in</span>
               <strong>{preStartCountdown}s</strong>
             </div>

@@ -482,6 +482,7 @@ fieldset {
   gap: 0.5rem;
   align-items: flex-start;
   width: 100%;
+  position: relative;
 }
 
 .lineup-options label {
@@ -1387,7 +1388,6 @@ fieldset {
 }
 
 .prestart-banner {
-  margin-top: 0.75rem;
   padding: 0.8rem 1.1rem;
   border-radius: 16px;
   border: 1px dashed rgba(255, 255, 255, 0.3);
@@ -1400,6 +1400,13 @@ fieldset {
 .prestart-banner strong {
   font-size: 1.4rem;
   color: #ff6b6b;
+}
+
+.prestart-banner.floating {
+  position: absolute;
+  right: clamp(1rem, 3vw, 2rem);
+  bottom: clamp(1rem, 3vw, 2rem);
+  box-shadow: 0 10px 30px rgba(255, 58, 115, 0.2);
 }
 
 .record-flag {
