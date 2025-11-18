@@ -1,7 +1,4 @@
-export const audioAnnounce = async (
-  text: string,
-  AudioContext: typeof window.AudioContext
-): Promise<void> => {
+export const playAnnouncement = async (text: string): Promise<void> => {
   try {
     // Call our Netlify serverless function instead of ElevenLabs directly
     const response = await fetch("/.netlify/functions/announce", {
