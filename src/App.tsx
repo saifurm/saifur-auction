@@ -6,14 +6,7 @@ import {
   useState,
   type FormEvent
 } from "react";
-import {
-  collection,
-  limit,
-  onSnapshot,
-  orderBy,
-  query,
-  where
-} from "firebase/firestore";
+import { collection, limit, onSnapshot, query, where } from "firebase/firestore";
 import { db } from "./firebase";
 import { useClientId } from "./hooks/useClientId";
 import { useAuctionData } from "./hooks/useAuctionData";
@@ -301,12 +294,7 @@ const usePublicAuctions = () => {
   const [publicAuctions, setPublicAuctions] = useState<Auction[]>([]);
 
   useEffect(() => {
-    const q = query(
-      collection(db, "auctions"),
-      where("visibility", "==", "public"),
-      orderBy("createdAt", "desc"),
-      limit(12)
-    );
+    const q = query(collection(db, "auctions"), where("visibility", "==", "public"), limit(12));
 
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const rows: Auction[] = [];
