@@ -1,5 +1,3 @@
-const fetch = require("node-fetch");
-
 exports.handler = async (event) => {
   try {
     const { ELEVENLABS_API_KEY, VOICE_ID } = process.env;
