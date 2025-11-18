@@ -1,5 +1,3 @@
-import { createClient } from "@supabase/supabase-js";
-
 export const audioAnnounce = async (
   text: string,
   AudioContext: typeof window.AudioContext
