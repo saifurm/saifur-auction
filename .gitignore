@@ -8,3 +8,4 @@ dist
 node_modules
 *.tsbuildinfo
 .vite
+*-firebase-adminsdk-*.json
