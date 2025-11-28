@@ -27,8 +27,8 @@ import type {
 import { buildPlayerQueue } from "../utils/players";
 import { generateAlias } from "../utils/alias";
 
-const START_TIMER_MS = 30000;
-const ACTIVE_BID_TIMER_MS = 15000;
+const START_TIMER_MS = 40000;
+const ACTIVE_BID_TIMER_MS = 20000;
 
 const getActiveSlot = (auction: Auction, queue: PlayerSlot[]) => {
   if (auction.manualPlayer) {

@@ -1,4 +1,4 @@
-import {
+﻿import {
   useCallback,
   useEffect,
   useMemo,
@@ -6,7 +6,8 @@ import {
   useState,
   type FormEvent
 } from "react";
-import { collection, limit, onSnapshot, query, where } from "firebase/firestore";
+import { collection, doc, getDocs, limit, onSnapshot, query, where } from "firebase/firestore";
+import type { Timestamp } from "firebase/firestore";
 import { db } from "./firebase";
 import { useClientId } from "./hooks/useClientId";
 import { useAuctionData } from "./hooks/useAuctionData";
@@ -18,7 +19,14 @@ import type { VoiceStream } from "./hooks/useVoiceChannel";
 import { formatCurrency, formatTimer } from "./utils/format";
 import { buildPlayerQueue } from "./utils/players";
 import { SOCCER_FORMATIONS, getFormationByCode } from "./utils/formations";
-import type { Auction, Participant, CompletedPlayerEntry, SportMode, TaggedRosterEntry } from "./types";
+import type {
+  Auction,
+  Participant,
+  CompletedPlayerEntry,
+  SportMode,
+  TaggedRosterEntry,
+  CategoryConfig
+} from "./types";
 import {
   createAuction,
   finalizeCurrentPlayer,
@@ -77,6 +85,25 @@ const CATEGORY_LABELS: CategoryFormState["label"][] = [
   "D",
   "E"
 ];
+
+// Quick-bid increments per category (subsequent taps reuse the last value).
+const QUICK_BID_SEQUENCES: Record<CategoryConfig["label"], number[]> = {
+  A: [5, 4, 2, 1],
+  B: [4, 3, 2, 1],
+  C: [3, 2, 1],
+  D: [2, 1],
+  E: [1]
+};
+
+const getQuickAddIncrement = (
+  category: CategoryConfig["label"] | undefined,
+  stepIndex: number
+): number => {
+  if (!category) return 1;
+  const sequence = QUICK_BID_SEQUENCES[category] ?? [1];
+  const cappedIndex = Math.min(stepIndex, sequence.length - 1);
+  return sequence[cappedIndex] ?? 1;
+};
 
 const CRICKET_POSITIONS = [
   "Opener 1",
@@ -310,6 +337,38 @@ const usePublicAuctions = () => {
   return publicAuctions;
 };
 
+const ACTIVE_PUBLIC_STAGES: Auction["status"][] = ["lobby", "live", "ranking"];
+const STALE_AUCTION_WINDOW_MS = 60 * 60 * 1000;
+
+const getTimestampMs = (stamp?: Timestamp | null) => (stamp?.toMillis?.() ?? 0);
+
+const getAuctionActivityTime = (auction: Auction) =>
+  getTimestampMs(auction.updatedAt ?? auction.countdownEndsAt ?? auction.createdAt ?? null);
+
+const getTotalAuctionPlayers = (auction: Auction) => {
+  if (typeof auction.totalPlayers === "number") return auction.totalPlayers;
+  if (Array.isArray(auction.categories) && auction.categories.length) {
+    return auction.categories.reduce((sum, category) => sum + (category.players?.length ?? 0), 0);
+  }
+  return (auction.playersPerTeam ?? 0) * (auction.maxParticipants ?? 0);
+};
+
+const SPORT_LABELS: Record<SportMode, string> = {
+  cricket: "Cricket",
+  soccer: "Soccer",
+  basketball: "Basketball",
+  football: "Football",
+  rugby: "Rugby"
+};
+
+type PopularSport = SportMode | "mixed" | null;
+
+const describePopularSport = (sport: PopularSport) => {
+  if (!sport) return null;
+  if (sport === "mixed") return "Mixed sports";
+  return SPORT_LABELS[sport] ?? null;
+};
+
 const App = () => {
   const clientId = useClientId();
   const [view, setView] = useState<ViewMode>("landing");
@@ -324,6 +383,25 @@ const App = () => {
   );
   const [toast, setToast] = useState<ToastState | null>(null);
   const publicAuctions = usePublicAuctions();
+  const [resultSportMap, setResultSportMap] = useState<Record<string, PopularSport>>({});
+  const activePublicAuctions = useMemo(() => {
+    const now = Date.now();
+    return publicAuctions.filter((auction) => {
+      const stageOk = ACTIVE_PUBLIC_STAGES.includes(auction.status);
+      if (!stageOk) return false;
+      const lastActivity = getAuctionActivityTime(auction);
+      if (!lastActivity) return true;
+      return now - lastActivity <= STALE_AUCTION_WINDOW_MS;
+    });
+  }, [publicAuctions]);
+  const recentResultAuctions = useMemo(
+    () =>
+      publicAuctions
+        .filter((auction) => auction.status === "results" && (auction.results?.length ?? 0) > 0)
+        .sort((a, b) => getAuctionActivityTime(b) - getAuctionActivityTime(a))
+        .slice(0, 5),
+    [publicAuctions]
+  );
   const [pendingStartAuction, setPendingStartAuction] = useState<string | null>(null);
   const [preStartCountdown, setPreStartCountdown] = useState(0);
   const resumeAvailable = Boolean(activeAuctionId && !auction);
@@ -340,6 +418,54 @@ const App = () => {
       window.localStorage.removeItem("saifur-auction:last");
     }
   }, [activeAuctionId]);
+
+  useEffect(() => {
+    let cancelled = false;
+    const fetchPopularSports = async () => {
+      const entries = await Promise.all(
+        recentResultAuctions.map(async (resultAuction) => {
+          try {
+            const participantsRef = collection(doc(db, "auctions", resultAuction.id), "participants");
+            const snapshot = await getDocs(participantsRef);
+            const counts: Partial<Record<SportMode, number>> = {};
+            snapshot.forEach((docSnap) => {
+              const data = docSnap.data() as Participant;
+              if (data.finalRosterSport) {
+                counts[data.finalRosterSport] = (counts[data.finalRosterSport] ?? 0) + 1;
+              }
+            });
+            let popular: PopularSport = null;
+            let max = 0;
+            (Object.entries(counts) as [SportMode, number][]).forEach(([sport, count]) => {
+              if (count > max) {
+                max = count;
+                popular = sport;
+              } else if (count === max && count !== 0) {
+                popular = "mixed";
+              }
+            });
+            if (max === 0) {
+              popular = null;
+            }
+            return [resultAuction.id, popular] as const;
+          } catch {
+            return [resultAuction.id, null] as const;
+          }
+        })
+      );
+      if (!cancelled) {
+        setResultSportMap(Object.fromEntries(entries));
+      }
+    };
+    if (recentResultAuctions.length) {
+      void fetchPopularSports();
+    } else {
+      setResultSportMap({});
+    }
+    return () => {
+      cancelled = true;
+    };
+  }, [recentResultAuctions]);
 
   useEffect(() => {
     if (!auction) return;
@@ -509,6 +635,10 @@ const App = () => {
     setActiveAuctionId(targetAuctionId);
     setView("lobby");
   };
+  const handleViewResults = (targetAuctionId: string) => {
+    setActiveAuctionId(targetAuctionId);
+    setView("results");
+  };
 
   const handleLeaveSession = () => {
     setActiveAuctionId(null);
@@ -523,6 +653,9 @@ const App = () => {
           onCreate={() => setView("create")}
           onJoin={() => setView("join")}
           onResume={resumeAvailable ? () => setView("lobby") : null}
+          recentResults={recentResultAuctions}
+          resultSports={resultSportMap}
+          onViewResults={handleViewResults}
         />
       );
     }
@@ -530,12 +663,15 @@ const App = () => {
     switch (view) {
       case "landing":
         return (
-          <LandingHero
-            hasActiveAuction={resumeAvailable}
-            onCreate={() => setView("create")}
-            onJoin={() => setView("join")}
-            onResume={resumeAvailable ? () => setView("lobby") : null}
-          />
+        <LandingHero
+          hasActiveAuction={resumeAvailable}
+          onCreate={() => setView("create")}
+          onJoin={() => setView("join")}
+          onResume={resumeAvailable ? () => setView("lobby") : null}
+          recentResults={recentResultAuctions}
+          resultSports={resultSportMap}
+          onViewResults={handleViewResults}
+        />
         );
       case "create":
         return (
@@ -550,7 +686,7 @@ const App = () => {
         return (
           <JoinAuctionPanel
             clientId={clientId}
-            publicAuctions={publicAuctions}
+            publicAuctions={activePublicAuctions}
             onBack={() => setView("landing")}
             onJoined={handleJoined}
             onWatch={handleWatch}
@@ -657,7 +793,7 @@ const App = () => {
       </header>
       <main className="stage-panel">{loading ? <p>Loading...</p> : renderView()}</main>
       <VoiceAudioLayer streams={voiceStreams} />
-      <footer className="app-footer">© Saifur Rahman Mehedi</footer>
+      <footer className="app-footer">&copy; Saifur Rahman Mehedi</footer>
     </div>
   );
 };
@@ -666,26 +802,86 @@ const LandingHero = ({
   hasActiveAuction,
   onCreate,
   onJoin,
-  onResume
+  onResume,
+  recentResults,
+  resultSports,
+  onViewResults
 }: {
   hasActiveAuction: boolean;
   onCreate: () => void;
   onJoin: () => void;
   onResume: (() => void) | null;
+  recentResults: Auction[];
+  resultSports: Record<string, PopularSport>;
+  onViewResults: (auctionId: string) => void;
 }) => (
   <section className="landing-card">
-    <h2>Let's play auction.</h2>
-    <p>
-      Start a lobby, share the password, and run a live late-night auction with your friends.
-    </p>
-    <div className="landing-actions">
-      <button className="btn accent" onClick={onCreate}>
-        Create auction
-      </button>
-      <button className="btn outline" onClick={onJoin}>
-        Join auction
-      </button>
+    <div className="landing-cta-row">
+      <div className="landing-heading">
+        <div className="landing-title-row">
+          <h2>Let's play auction</h2>
+          <p className="landing-tagline">
+            Run a live late-night auction with friends and vibe together on voice chat.
+          </p>
+        </div>
+      </div>
+      <div className="landing-actions">
+        <button className="btn accent" onClick={onCreate}>
+          Create auction
+        </button>
+        <button className="btn outline" onClick={onJoin}>
+          Join auction
+        </button>
+        <a className="btn ghost" href="/Preview.pdf" target="_blank" rel="noreferrer">
+          See how it works
+        </a>
+      </div>
     </div>
+    <div className="landing-highlights">
+      <div className="highlight-grid">
+        <article className="highlight-card">
+          <span>Team rankings</span>
+          <p>Everyone ranks all other teams, and the highest-rated team wins.</p>
+        </article>
+        <article className="highlight-card">
+          <span>Local tournaments</span>
+          <p>Host local tournament auctions.</p>
+        </article>
+        <article className="highlight-card">
+          <span>Sports we play</span>
+          <p>Cricket &middot; Soccer &middot; Football &middot; Basketball &middot; Rugby</p>
+        </article>
+      </div>
+    </div>
+    {recentResults.length > 0 && (
+      <div className="landing-results">
+        <div className="results-header">
+          <h3>Past public auctions</h3>
+        </div>
+        <div className="results-scroll">
+          {recentResults.map((result) => {
+            const participantCount = result.results?.length ?? result.participantCount ?? 0;
+            const playerPool = getTotalAuctionPlayers(result);
+            const popularSport = describePopularSport(resultSports[result.id] ?? null);
+            const teamLabel = `${participantCount} ${participantCount === 1 ? "team" : "teams"}`;
+            return (
+              <article key={result.id} className="result-card">
+                <div className="result-info">
+                  <p className="result-event">{result.name}</p>
+                  <p className="result-participants">
+                    {popularSport ? `${popularSport} · ` : ""}
+                    {teamLabel} · {playerPool} player pool
+                  </p>
+                </div>
+                <button className="btn outline" onClick={() => onViewResults(result.id)}>
+                  Leaderboard
+                </button>
+              </article>
+            );
+          })}
+        </div>
+      </div>
+    )}
     {hasActiveAuction && onResume && (
       <button className="btn text" onClick={onResume}>
         Resume last lobby
@@ -781,7 +977,7 @@ const CreateAuctionForm = ({
     }
     const resolvedBudgetMillions = Number(budgetPerPlayerInput || "0");
     if (!Number.isFinite(resolvedBudgetMillions) || resolvedBudgetMillions < 1) {
-      notify("error", "Budget per player should be at least $1M.");
+      notify("error", "Budget per player should be at least $1.");
       return;
     }
     const resolvedBudget = resolvedBudgetMillions * 1_000_000;
@@ -904,7 +1100,7 @@ const CreateAuctionForm = ({
           />
         </label>
         <label>
-          Budget per player (USD millions)
+          Budget per player (USD)
           <input
             type="text"
             inputMode="numeric"
@@ -1556,29 +1752,42 @@ const LiveAuctionBoard = ({
     return activeSlot.basePrice;
   }, [activeSlot?.key, activeSlot?.basePrice, auction.activeBid?.amount]);
   const [bidInput, setBidInput] = useState(() => (activeSlot ? String(minimumBid) : ""));
+  const [quickAddCount, setQuickAddCount] = useState(0);
+  const [isEditingBid, setIsEditingBid] = useState(false);
 
   useEffect(() => {
     if (!activeSlot) {
       setBidInput("");
+      setIsEditingBid(false);
       return;
     }
     const liveAmount = auction.activeBid?.amount;
     const nextBid =
       typeof liveAmount === "number" ? Math.max(activeSlot.basePrice, liveAmount + 1) : activeSlot.basePrice;
     setBidInput(String(nextBid));
+    setIsEditingBid(false);
   }, [activeSlot?.key]);
 
   useEffect(() => {
-    if (!activeSlot) return;
+    setQuickAddCount(0);
+  }, [activeSlot?.key]);
+
+  useEffect(() => {
+    if (!activeSlot || isEditingBid) return;
     setBidInput((prev) => {
-      if (!prev) return prev;
+      if (!prev) return String(minimumBid);
       const numeric = Number(prev);
       if (!Number.isFinite(numeric) || numeric < minimumBid) {
         return String(minimumBid);
       }
       return prev;
     });
-  }, [minimumBid, activeSlot?.key]);
+  }, [minimumBid, activeSlot?.key, isEditingBid]);
+
+  const quickAddIncrement = useMemo(
+    () => getQuickAddIncrement(activeSlot?.categoryLabel, quickAddCount),
+    [activeSlot?.categoryLabel, quickAddCount]
+  );
 
   const isAdmin = selfParticipant?.role === "admin";
   const highestBidderId = auction.activeBid?.bidderId;
@@ -1647,9 +1856,21 @@ const LiveAuctionBoard = ({
         amount: bidAmount
       });
       } catch (error) {
-        notify("error", (error as Error).message);
-      }
-    };
+      notify("error", (error as Error).message);
+    }
+  };
+
+  const handleQuickAdd = () => {
+    if (!activeSlot) return;
+    const increment = getQuickAddIncrement(activeSlot.categoryLabel, quickAddCount);
+    setBidInput((value) => {
+      const parsed = Number(value);
+      const fallback = minimumBid || activeSlot.basePrice || 0;
+      const current = Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+      return String(current + increment);
+    });
+    setQuickAddCount((count) => count + 1);
+  };
 
   const handlePass = async () => {
     if (!selfParticipant || selfIsSpectator || !activeSlot || auction.isPaused) return;
@@ -1920,7 +2141,7 @@ const LiveAuctionBoard = ({
                 onClick={onToggleAudio}
                 aria-label={audioEnabled ? "Mute auction announcer" : "Enable auction announcer"}
               >
-                <span aria-hidden="true">{audioEnabled ? "🔊" : "🔇"}</span>
+                <span aria-hidden="true">{audioEnabled ? "ðŸ”Š" : "ðŸ”‡"}</span>
               </button>
             </div>
             {activeSlot && (
@@ -1930,7 +2151,7 @@ const LiveAuctionBoard = ({
             )}
             {isManual && <p className="muted-label">Re-auctioning an unsold player</p>}
           </div>
-          <PanelVoiceButton control={voiceControl} variant="inline" />
+          <PanelVoiceButton control={voiceControl} />
         </div>
         <div className="timer-display deck-timer">
           <span>Time left</span>
@@ -1976,6 +2197,8 @@ const LiveAuctionBoard = ({
             onChange={(event) =>
               setBidInput(event.target.value.replace(/[^0-9]/g, "").replace(/^0+(?=\d)/, ""))
             }
+            onFocus={() => setIsEditingBid(true)}
+            onBlur={() => setIsEditingBid(false)}
           />
           <button className="btn accent" disabled={bidDisabled} onClick={handleBid}>
             Place bid
@@ -1983,16 +2206,9 @@ const LiveAuctionBoard = ({
           <button
             className="btn ghost"
             disabled={bidDisabled}
-            onClick={() =>
-              setBidInput((value) => {
-                const parsed = Number(value);
-                const fallback = minimumBid || activeSlot?.basePrice || 0;
-                const next = Number.isFinite(parsed) && parsed > 0 ? parsed + 1 : fallback + 1;
-                return String(next);
-              })
-            }
+            onClick={handleQuickAdd}
           >
-            +1
+            +{quickAddIncrement}
           </button>
           <button
             className="btn outline"
@@ -3137,3 +3353,10 @@ const useAdminAutomation = (
 };
 
 export default App;
+
+
+
+
+
+
+
