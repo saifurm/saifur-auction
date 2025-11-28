@@ -1059,9 +1059,7 @@ const CreateAuctionForm = ({
             checked={adminWillPlay}
             onChange={(event) => setAdminWillPlay(event.target.checked)}
           />
-          <p className="muted-label">
-            Keep this on to bid alongside friends. Turn it off if you're just hosting & judging.
-          </p>
+          <p className="muted-label">Turn it off if you're just hosting & judging.</p>
         </label>
         <label className="toggle-row">
           <span>Anonymous auction</span>
@@ -1070,10 +1068,7 @@ const CreateAuctionForm = ({
             checked={anonymousMode}
             onChange={(event) => setAnonymousMode(event.target.checked)}
           />
-          <p className="muted-label">
-            Everyone gets a short alias during bidding and ranking. Real names show only in lobby
-            and final leaderboard.
-          </p>
+          <p className="muted-label">Real names show only in lobby and final leaderboard.</p>
         </label>
         <label>
           How many friends will play?
