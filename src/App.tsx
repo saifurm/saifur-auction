@@ -975,12 +975,12 @@ const CreateAuctionForm = ({
       notify("error", "Players per team must be between 1 and 20.");
       return;
     }
-    const resolvedBudgetMillions = Number(budgetPerPlayerInput || "0");
-    if (!Number.isFinite(resolvedBudgetMillions) || resolvedBudgetMillions < 1) {
+    const resolvedBudgetValue = Number(budgetPerPlayerInput || "0");
+    if (!Number.isFinite(resolvedBudgetValue) || resolvedBudgetValue < 1) {
       notify("error", "Budget per player should be at least $1.");
       return;
     }
-    const resolvedBudget = resolvedBudgetMillions * 1_000_000;
+    const resolvedBudget = resolvedBudgetValue;
 
     setSaving(true);
     try {
@@ -1100,7 +1100,7 @@ const CreateAuctionForm = ({
           />
         </label>
         <label>
-          Budget per player (USD)
+          Budget per player (Million USD)
           <input
             type="text"
             inputMode="numeric"
@@ -1150,7 +1150,7 @@ const CreateAuctionForm = ({
                   </div>
                   <div className="category-meta">
                     <label>
-                      Base price (USD)
+                      Base price (Million USD)
                       <input
                         type="text"
                         inputMode="numeric"
