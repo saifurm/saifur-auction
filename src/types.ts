@@ -81,6 +81,7 @@ export interface Auction {
   }[];
   anonymousMode?: boolean;
   adminParticipating?: boolean;
+  quickAddCount?: number;
 }
 
 export interface RosterEntry {

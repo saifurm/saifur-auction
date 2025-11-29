@@ -43,7 +43,8 @@ import {
   skipPlayer,
   startAuction,
   submitRanking,
-  submitTeam
+  submitTeam,
+  incrementQuickAddCounter
 } from "./services/auctionService";
 
 const MUSIC_PLAYLIST_ID = import.meta.env.VITE_YT_PLAYLIST_ID ?? "";
@@ -1975,8 +1976,8 @@ const LiveAuctionBoard = ({
     return activeSlot.basePrice;
   }, [activeSlot?.key, activeSlot?.basePrice, auction.activeBid?.amount]);
   const [bidInput, setBidInput] = useState(() => (activeSlot ? String(minimumBid) : ""));
-  const [quickAddCount, setQuickAddCount] = useState(0);
   const [isEditingBid, setIsEditingBid] = useState(false);
+  const [localQuickAddDelta, setLocalQuickAddDelta] = useState(0);
 
   useEffect(() => {
     if (!activeSlot) {
@@ -1992,10 +1993,6 @@ const LiveAuctionBoard = ({
   }, [activeSlot?.key]);
 
   useEffect(() => {
-    setQuickAddCount(0);
-  }, [activeSlot?.key]);
-
-  useEffect(() => {
     if (!activeSlot || isEditingBid) return;
     setBidInput((prev) => {
       if (!prev) return String(minimumBid);
@@ -2006,10 +2003,14 @@ const LiveAuctionBoard = ({
       return prev;
     });
   }, [minimumBid, activeSlot?.key, isEditingBid]);
+  useEffect(() => {
+    setLocalQuickAddDelta(0);
+  }, [auction.quickAddCount, activeSlot?.key]);
 
+  const effectiveQuickAddCount = (auction.quickAddCount ?? 0) + localQuickAddDelta;
   const quickAddIncrement = useMemo(
-    () => getQuickAddIncrement(activeSlot?.categoryLabel, quickAddCount),
-    [activeSlot?.categoryLabel, quickAddCount]
+    () => getQuickAddIncrement(activeSlot?.categoryLabel, effectiveQuickAddCount),
+    [activeSlot?.categoryLabel, effectiveQuickAddCount]
   );
 
   const isAdmin = selfParticipant?.role === "admin";
@@ -2085,14 +2086,18 @@ const LiveAuctionBoard = ({
 
   const handleQuickAdd = () => {
     if (!activeSlot) return;
-    const increment = getQuickAddIncrement(activeSlot.categoryLabel, quickAddCount);
+    const appliedCount = (auction.quickAddCount ?? 0) + localQuickAddDelta;
+    const increment = getQuickAddIncrement(activeSlot.categoryLabel, appliedCount);
     setBidInput((value) => {
       const parsed = Number(value);
       const fallback = minimumBid || activeSlot.basePrice || 0;
       const current = Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
       return String(current + increment);
     });
-    setQuickAddCount((count) => count + 1);
+    setLocalQuickAddDelta((count) => count + 1);
+    incrementQuickAddCounter(auction.id).catch(() => {
+      setLocalQuickAddDelta((count) => Math.max(count - 1, 0));
+    });
   };
 
   const handlePass = async () => {
@@ -2374,7 +2379,6 @@ const LiveAuctionBoard = ({
             )}
             {isManual && <p className="muted-label">Re-auctioning an unsold player</p>}
           </div>
-          <PanelVoiceButton control={voiceControl} music={musicControl} />
         </div>
         <div className="timer-display deck-timer">
           <span>Time left</span>

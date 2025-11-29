@@ -122,6 +122,7 @@ export const createAuction = async (input: CreateAuctionInput) => {
     viewCount: 0,
     completedPlayers: [],
     results: [],
+    quickAddCount: 0,
     anonymousMode: Boolean(input.anonymousMode),
     adminParticipating: input.adminWillPlay !== false
   });
@@ -247,6 +248,7 @@ export const startAuction = async (auctionId: string) => {
       manualPlayer: null,
       manualSourceId: null,
       finalizationOpen: false,
+      quickAddCount: 0,
       updatedAt: serverTimestamp()
     });
   });
@@ -437,6 +439,7 @@ const resolveNextPlayer = (auction: Auction, queue: PlayerSlot[]) => {
       isPaused: false,
       pausedRemainingMs: null,
       finalizationOpen: auction.finalizationOpen ?? false,
+      quickAddCount: 0,
       updatedAt: serverTimestamp()
     }
   };
@@ -537,6 +540,7 @@ export const finalizeCurrentPlayer = async (input: FinalizeInput) => {
             pausedRemainingMs: null,
             status: queueComplete ? "ended" : auction.status,
             finalizationOpen: queueComplete ? false : auction.finalizationOpen ?? false,
+            quickAddCount: 0,
             updatedAt: serverTimestamp()
           }
         }
@@ -658,6 +662,7 @@ export const relistUnsoldPlayer = async (input: RelistInput) => {
       skipVotes: [],
       isPaused: false,
       pausedRemainingMs: null,
+      quickAddCount: 0,
       updatedAt: serverTimestamp()
     });
   });
@@ -747,5 +752,11 @@ export const incrementViewCount = async (auctionId: string) => {
   await updateDoc(auctionRef, {
     viewCount: increment(1),
     updatedAt: serverTimestamp()
+  });
+};
+
+export const incrementQuickAddCounter = async (auctionId: string) => {
+  await updateDoc(doc(db, "auctions", auctionId), {
+    quickAddCount: increment(1)
   });
 };
