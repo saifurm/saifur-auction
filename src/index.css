@@ -1288,8 +1288,66 @@ fieldset {
   z-index: 10;
 }
 
+.panel-voice-toggle.music-mode {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  padding: 0.35rem 0.9rem 0.35rem 0.35rem;
+  background: rgba(0, 0, 0, 0.55);
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  backdrop-filter: blur(8px);
+}
+
 .inline-voice-toggle {
   display: inline-flex;
+}
+
+.music-icon-btn {
+  width: 44px;
+  height: 44px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  background: rgba(0, 0, 0, 0.45);
+  color: #f4f4f5;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: background 0.2s ease, border-color 0.2s ease, transform 0.2s ease;
+}
+
+.music-icon-btn.muted {
+  border-color: rgba(255, 255, 255, 0.25);
+  background: rgba(15, 15, 15, 0.6);
+  color: #d1d5db;
+}
+
+.music-icon-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.music-meta {
+  display: flex;
+  flex-direction: column;
+  line-height: 1.1;
+}
+
+.music-meta span {
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: rgba(255, 255, 255, 0.65);
+}
+
+.music-meta strong {
+  font-size: 0.9rem;
+  color: #f4f4f5;
+  max-width: 180px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .voice-icon-btn {
@@ -1319,6 +1377,32 @@ fieldset {
 .voice-icon-btn:disabled {
   opacity: 0.5;
   cursor: not-allowed;
+}
+
+.music-note-shell {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.65rem;
+  height: 1.65rem;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  background: rgba(255, 255, 255, 0.08);
+  color: #f5f5f5;
+  box-shadow: 0 8px 18px rgba(0, 0, 0, 0.35);
+}
+
+.music-note-shell.muted {
+  border-color: rgba(209, 213, 219, 0.4);
+  background: rgba(209, 213, 219, 0.08);
+  color: #cbd5f5;
+}
+
+.music-note-icon {
+  width: 0.85rem;
+  height: 0.85rem;
+  display: block;
 }
 
 .mic-shell {
@@ -1382,6 +1466,17 @@ fieldset {
 .voice-audio-layer audio {
   width: 1px;
   height: 1px;
+}
+
+.music-player-sink {
+  position: absolute;
+  left: -9999px;
+  top: auto;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  opacity: 0;
+  pointer-events: none;
 }
 
 .admin-controls {

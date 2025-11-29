@@ -46,6 +46,167 @@ import {
   submitTeam
 } from "./services/auctionService";
 
+const MUSIC_PLAYLIST_ID = import.meta.env.VITE_YT_PLAYLIST_ID ?? "";
+
+declare global {
+  interface Window {
+    YT?: any;
+    onYouTubeIframeAPIReady?: () => void;
+  }
+}
+
+type MusicBadgeControl = {
+  title: string;
+  loading: boolean;
+  muted: boolean;
+  toggleMute: () => void;
+};
+
+let youTubeAPILoader: Promise<any> | null = null;
+
+const loadYouTubeIframeAPI = () => {
+  if (typeof window === "undefined") return Promise.resolve(null);
+  if (window.YT && window.YT.Player) {
+    return Promise.resolve(window.YT);
+  }
+  if (youTubeAPILoader) {
+    return youTubeAPILoader;
+  }
+  youTubeAPILoader = new Promise((resolve) => {
+    const existing = document.querySelector<HTMLScriptElement>('script[data-yt-api="1"]');
+    if (!existing) {
+      const tag = document.createElement("script");
+      tag.src = "https://www.youtube.com/iframe_api";
+      tag.async = true;
+      tag.setAttribute("data-yt-api", "1");
+      document.head.appendChild(tag);
+    }
+    window.onYouTubeIframeAPIReady = () => {
+      resolve(window.YT);
+    };
+  });
+  return youTubeAPILoader;
+};
+
+const useMusicPlaylist = (playlistId: string, active: boolean) => {
+  const containerRef = useRef<HTMLDivElement | null>(null);
+  const playerRef = useRef<any>(null);
+  const [title, setTitle] = useState("");
+  const [ready, setReady] = useState(false);
+  const [muted, setMuted] = useState(true);
+
+  useEffect(() => {
+    if (!playlistId || typeof window === "undefined") return;
+    let cancelled = false;
+
+    const attachPlayer = async () => {
+      const YT = await loadYouTubeIframeAPI();
+      if (cancelled || !YT || !containerRef.current) return;
+
+      if (!playerRef.current) {
+        playerRef.current = new YT.Player(containerRef.current, {
+          height: "0",
+          width: "0",
+          playerVars: {
+            listType: "playlist",
+            list: playlistId,
+            autoplay: 1,
+            controls: 0,
+            modestbranding: 1,
+            rel: 0,
+            loop: 1,
+            playsinline: 1
+          },
+          events: {
+            onReady: (event: any) => {
+              if (cancelled) return;
+              setReady(true);
+              const data = event.target.getVideoData?.();
+              setTitle(data?.title ?? "Playlist radio");
+              event.target.mute();
+              if (active) {
+                event.target.playVideo();
+              } else {
+                event.target.pauseVideo();
+              }
+            },
+            onStateChange: (event: any) => {
+              const playerState = window.YT?.PlayerState;
+              if (playerState && event.data === playerState.PLAYING) {
+                const data = event.target.getVideoData?.();
+                setTitle(data?.title ?? "Playlist radio");
+              }
+              if (!active && playerState && event.data === playerState.PLAYING) {
+                event.target.pauseVideo();
+              }
+            }
+          }
+        });
+      } else if (active) {
+        try {
+          playerRef.current.playVideo();
+        } catch {
+          // ignore
+        }
+      } else {
+        try {
+          playerRef.current.pauseVideo();
+        } catch {
+          // ignore
+        }
+      }
+    };
+
+    void attachPlayer();
+    return () => {
+      cancelled = true;
+    };
+  }, [playlistId, active]);
+
+  useEffect(() => {
+    const player = playerRef.current;
+    if (!player) return;
+    try {
+      if (active) {
+        player.playVideo();
+      } else {
+        player.pauseVideo();
+      }
+    } catch {
+      // ignore
+    }
+  }, [active]);
+
+  useEffect(() => {
+    const player = playerRef.current;
+    if (!player) return;
+    try {
+      if (muted) {
+        player.mute();
+      } else {
+        player.unMute();
+      }
+    } catch {
+      // ignore
+    }
+  }, [muted]);
+
+  const toggleMute = useCallback(() => {
+    setMuted((prev) => !prev);
+  }, []);
+
+  return {
+    containerRef,
+    control: playlistId
+      ? {
+          title,
+          loading: !ready,
+          muted,
+          toggleMute
+        }
+      : null
+  };
+};
 type ViewMode =
   | "landing"
   | "create"
@@ -405,6 +566,13 @@ const App = () => {
   const [pendingStartAuction, setPendingStartAuction] = useState<string | null>(null);
   const [preStartCountdown, setPreStartCountdown] = useState(0);
   const resumeAvailable = Boolean(activeAuctionId && !auction);
+  const musicActive = view === "post" || view === "ranking";
+  const { control: playlistControl, containerRef: musicContainerRef } = useMusicPlaylist(
+    MUSIC_PLAYLIST_ID,
+    musicActive
+  );
+  const musicBadgeControl: MusicBadgeControl | null =
+    musicActive && playlistControl ? playlistControl : null;
 
   const notify = (type: ToastState["type"], text: string) => {
     setToast({ type, text });
@@ -553,7 +721,7 @@ const App = () => {
     window.localStorage.setItem("saifur-auction:voice", auctionAudioEnabled ? "on" : "off");
   }, [auctionAudioEnabled]);
 
-  const voiceCapableViews: ViewMode[] = ["lobby", "auction", "post", "ranking", "results"];
+  const voiceCapableViews: ViewMode[] = ["lobby", "auction", "results"];
   const voiceEnabled = Boolean(auction && voiceCapableViews.includes(view));
   const canSpeak = Boolean(selfParticipant);
   const shouldUseMic = Boolean(canSpeak && micEnabled);
@@ -702,6 +870,7 @@ const App = () => {
               selfParticipant={selfParticipant}
               notify={notify}
               voiceControl={voiceButtonControl}
+              musicControl={musicBadgeControl}
               viewerCount={showViewerCount ? viewerCount : null}
               preStartCountdown={preStartCountdown}
               onStartCountdown={triggerStartCountdown}
@@ -717,6 +886,7 @@ const App = () => {
               selfParticipant={selfParticipant}
               notify={notify}
               voiceControl={voiceButtonControl}
+              musicControl={musicBadgeControl}
               audioEnabled={auctionAudioEnabled}
               onToggleAudio={() => setAuctionAudioEnabled((prev) => !prev)}
             />
@@ -731,6 +901,7 @@ const App = () => {
               selfParticipant={selfParticipant}
               notify={notify}
               voiceControl={voiceButtonControl}
+              musicControl={musicBadgeControl}
             />
           )
         );
@@ -743,6 +914,7 @@ const App = () => {
               selfParticipant={selfParticipant}
               notify={notify}
               voiceControl={voiceButtonControl}
+              musicControl={musicBadgeControl}
             />
           )
         );
@@ -753,6 +925,7 @@ const App = () => {
               auction={auction}
               participants={participants}
               voiceControl={voiceButtonControl}
+              musicControl={musicBadgeControl}
             />
           )
         );
@@ -792,6 +965,7 @@ const App = () => {
         </div>
       </header>
       <main className="stage-panel">{loading ? <p>Loading...</p> : renderView()}</main>
+      <div ref={musicContainerRef} className="music-player-sink" aria-hidden />
       <VoiceAudioLayer streams={voiceStreams} />
       <footer className="app-footer">&copy; Saifur Rahman Mehedi</footer>
     </div>
@@ -1312,6 +1486,7 @@ const LobbyView = ({
   selfParticipant,
   notify,
   voiceControl,
+  musicControl,
   viewerCount,
   preStartCountdown,
   onStartCountdown
@@ -1321,6 +1496,7 @@ const LobbyView = ({
   selfParticipant: Participant | null;
   notify: (type: ToastState["type"], text: string) => void;
   voiceControl: VoiceButtonControl | null;
+  musicControl: MusicBadgeControl | null;
   viewerCount: number | null;
   preStartCountdown: number;
   onStartCountdown: () => void;
@@ -1330,7 +1506,7 @@ const LobbyView = ({
 
   return (
     <section className="panel-card lobby">
-      <PanelVoiceButton control={voiceControl} />
+      <PanelVoiceButton control={voiceControl} music={musicControl} />
       <div className="lobby-header">
         <div className="lobby-title-row">
           <p className="eyebrow">Lobby</p>
@@ -1428,11 +1604,22 @@ const LobbyView = ({
 
 const PanelVoiceButton = ({
   control,
-  variant = "panel"
+  variant = "panel",
+  music
 }: {
   control: VoiceButtonControl | null;
   variant?: "panel" | "inline";
+  music?: MusicBadgeControl | null;
 }) => {
+  if (music) {
+    const wrapperClass =
+      variant === "inline" ? "inline-voice-toggle" : "panel-voice-toggle music-mode";
+    return (
+      <div className={wrapperClass}>
+        <MusicBadge {...music} compact={variant === "inline"} />
+      </div>
+    );
+  }
   if (!control) return null;
   if (variant === "inline") {
     return (
@@ -1505,6 +1692,45 @@ const MicIcon = ({ crossed }: { crossed?: boolean }) => (
       />
     </svg>
     {crossed && <span className="mic-slash" />}
+  </span>
+);
+
+const MusicBadge = ({
+  title,
+  loading,
+  muted,
+  toggleMute,
+  compact
+}: MusicBadgeControl & { compact?: boolean }) => (
+  <>
+    <button
+      type="button"
+      className={`music-icon-btn ${muted ? "muted" : ""}`}
+      onClick={toggleMute}
+      aria-label={muted ? "Start music" : "Mute music"}
+      title={muted ? "Start music" : "Mute music"}
+      disabled={loading}
+    >
+      <MusicNoteIcon muted={muted} />
+    </button>
+    {!compact && (
+      <div className="music-meta">
+        <span>Now playing</span>
+        <strong>{loading ? "Loading playlist..." : title || "Playlist radio"}</strong>
+      </div>
+    )}
+  </>
+);
+
+const MusicNoteIcon = ({ muted }: { muted?: boolean }) => (
+  <span className={`music-note-shell ${muted ? "muted" : ""}`}>
+    <svg className="music-note-icon" viewBox="0 0 24 24" aria-hidden="true">
+      <path
+        d="M9 3v12.26A4 4 0 1 0 11 19v-9.74l7-1.4v6.4a4 4 0 1 0 2 3.48V5L9 3Z"
+        fill="currentColor"
+      />
+    </svg>
+    {muted && <span className="mic-slash" />}
   </span>
 );
 
@@ -1716,6 +1942,7 @@ const LiveAuctionBoard = ({
   selfParticipant,
   notify,
   voiceControl,
+  musicControl,
   audioEnabled,
   onToggleAudio
 }: {
@@ -1724,6 +1951,7 @@ const LiveAuctionBoard = ({
   selfParticipant: Participant | null;
   notify: (type: ToastState["type"], text: string) => void;
   voiceControl: VoiceButtonControl | null;
+  musicControl: MusicBadgeControl | null;
   audioEnabled: boolean;
   onToggleAudio: () => void;
 }) => {
@@ -2146,7 +2374,7 @@ const LiveAuctionBoard = ({
             )}
             {isManual && <p className="muted-label">Re-auctioning an unsold player</p>}
           </div>
-          <PanelVoiceButton control={voiceControl} />
+          <PanelVoiceButton control={voiceControl} music={musicControl} />
         </div>
         <div className="timer-display deck-timer">
           <span>Time left</span>
@@ -2343,13 +2571,15 @@ const TeamConfirmationPanel = ({
   participants,
   selfParticipant,
   notify,
-  voiceControl
+  voiceControl,
+  musicControl
 }: {
   auction: Auction;
   participants: Participant[];
   selfParticipant: Participant | null;
   notify: (type: ToastState["type"], text: string) => void;
   voiceControl: VoiceButtonControl | null;
+  musicControl: MusicBadgeControl | null;
 }) => {
   const roster = selfParticipant?.roster ?? [];
   const finalRoster = selfParticipant?.finalRoster ?? [];
@@ -2789,7 +3019,7 @@ const TeamConfirmationPanel = ({
   if (selfParticipant?.participating === false) {
     return (
       <section className="panel-card">
-        <PanelVoiceButton control={voiceControl} />
+        <PanelVoiceButton control={voiceControl} music={musicControl} />
         <h2>Host overview</h2>
         <p className="muted-label">
           You're running this auction but not submitting a lineup. Track everyone else's picks and wait
@@ -2820,7 +3050,7 @@ const TeamConfirmationPanel = ({
       finalSport !== "soccer" && finalSport !== "cricket" && Boolean(finalRoster.length);
     return (
       <section className="panel-card">
-        <PanelVoiceButton control={voiceControl} />
+        <PanelVoiceButton control={voiceControl} music={musicControl} />
         <h2>Your final squad</h2>
         {submittedSoccer ? (
           <>
@@ -2897,7 +3127,7 @@ const TeamConfirmationPanel = ({
 
   return (
     <section className="panel-card">
-      <PanelVoiceButton control={voiceControl} />
+      <PanelVoiceButton control={voiceControl} music={musicControl} />
       <h2>Lock your final {limit}</h2>
       <p className="muted-label">Switch between cricket order or stadium boards for other sports.</p>
       <div className="sport-toggle">
@@ -3079,13 +3309,15 @@ const RankingPanel = ({
   participants,
   selfParticipant,
   notify,
-  voiceControl
+  voiceControl,
+  musicControl
 }: {
   auction: Auction;
   participants: Participant[];
   selfParticipant: Participant | null;
   notify: (type: ToastState["type"], text: string) => void;
   voiceControl: VoiceButtonControl | null;
+  musicControl: MusicBadgeControl | null;
 }) => {
   const others = participants.filter(
     (player) => player.id !== selfParticipant?.id && player.participating !== false
@@ -3122,7 +3354,7 @@ const RankingPanel = ({
 
   return (
     <section className="panel-card">
-      <PanelVoiceButton control={voiceControl} />
+      <PanelVoiceButton control={voiceControl} music={musicControl} />
       <h2>Rank others</h2>
       <p>Move cards to reorder. Top pick earns the most points.</p>
       <ol className="ranking-list">
@@ -3211,17 +3443,19 @@ const RankingPanel = ({
 const ResultsBoard = ({
   auction,
   participants,
-  voiceControl
+  voiceControl,
+  musicControl
 }: {
   auction: Auction;
   participants: Participant[];
   voiceControl: VoiceButtonControl | null;
+  musicControl: MusicBadgeControl | null;
 }) => {
   const results = auction.results ?? [];
 
   return (
     <section className="panel-card">
-      <PanelVoiceButton control={voiceControl} />
+      <PanelVoiceButton control={voiceControl} music={musicControl} />
       <h2>Final leaderboard</h2>
       {!results.length && <p>Waiting for admin to publish results...</p>}
       {results.length > 0 && (
