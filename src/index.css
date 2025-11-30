@@ -115,24 +115,6 @@ body {
   font-weight: 700;
 }
 
-.audio-toggle {
-  border: 1px solid rgba(255, 255, 255, 0.18);
-  background: rgba(255, 255, 255, 0.04);
-  color: inherit;
-  border-radius: 999px;
-  width: 34px;
-  height: 34px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-  transition: background 0.2s ease, border-color 0.2s ease;
-}
-
-.audio-toggle.active {
-  border-color: #f5718d;
-  background: rgba(245, 113, 141, 0.2);
-}
 
 .status-pill {
   font-size: 0.75rem;

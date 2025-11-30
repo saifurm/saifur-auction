@@ -1,4 +1,4 @@
-﻿import {
+import {
   useCallback,
   useEffect,
   useMemo,
@@ -89,7 +89,7 @@ const loadYouTubeIframeAPI = () => {
   return youTubeAPILoader;
 };
 
-const useMusicPlaylist = (playlistId: string, active: boolean) => {
+const useMusicPlaylist = (playlistId: string, shouldPreload: boolean, playActive: boolean) => {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const playerRef = useRef<any>(null);
   const [title, setTitle] = useState("");
@@ -98,6 +98,7 @@ const useMusicPlaylist = (playlistId: string, active: boolean) => {
 
   useEffect(() => {
     if (!playlistId || typeof window === "undefined") return;
+    if (!shouldPreload) return;
     let cancelled = false;
 
     const attachPlayer = async () => {
@@ -125,7 +126,7 @@ const useMusicPlaylist = (playlistId: string, active: boolean) => {
               const data = event.target.getVideoData?.();
               setTitle(data?.title ?? "Playlist radio");
               event.target.mute();
-              if (active) {
+              if (playActive) {
                 event.target.playVideo();
               } else {
                 event.target.pauseVideo();
@@ -137,13 +138,13 @@ const useMusicPlaylist = (playlistId: string, active: boolean) => {
                 const data = event.target.getVideoData?.();
                 setTitle(data?.title ?? "Playlist radio");
               }
-              if (!active && playerState && event.data === playerState.PLAYING) {
+              if (!playActive && playerState && event.data === playerState.PLAYING) {
                 event.target.pauseVideo();
               }
             }
           }
         });
-      } else if (active) {
+      } else if (playActive) {
         try {
           playerRef.current.playVideo();
         } catch {
@@ -162,13 +163,13 @@ const useMusicPlaylist = (playlistId: string, active: boolean) => {
     return () => {
       cancelled = true;
     };
-  }, [playlistId, active]);
+  }, [playlistId, shouldPreload, playActive]);
 
   useEffect(() => {
     const player = playerRef.current;
     if (!player) return;
     try {
-      if (active) {
+      if (playActive) {
         player.playVideo();
       } else {
         player.pauseVideo();
@@ -176,7 +177,7 @@ const useMusicPlaylist = (playlistId: string, active: boolean) => {
     } catch {
       // ignore
     }
-  }, [active]);
+  }, [playActive]);
 
   useEffect(() => {
     const player = playerRef.current;
@@ -186,6 +187,7 @@ const useMusicPlaylist = (playlistId: string, active: boolean) => {
         player.mute();
       } else {
         player.unMute();
+        player.playVideo();
       }
     } catch {
       // ignore
@@ -193,7 +195,17 @@ const useMusicPlaylist = (playlistId: string, active: boolean) => {
   }, [muted]);
 
   const toggleMute = useCallback(() => {
-    setMuted((prev) => !prev);
+    setMuted((prev) => {
+      const next = !prev;
+      if (!next) {
+        try {
+          playerRef.current?.playVideo();
+        } catch {
+          // ignore
+        }
+      }
+      return next;
+    });
   }, []);
 
   return {
@@ -568,8 +580,10 @@ const App = () => {
   const [preStartCountdown, setPreStartCountdown] = useState(0);
   const resumeAvailable = Boolean(activeAuctionId && !auction);
   const musicActive = view === "post" || view === "ranking";
+  const shouldPreloadMusic = view === "auction" || musicActive;
   const { control: playlistControl, containerRef: musicContainerRef } = useMusicPlaylist(
     MUSIC_PLAYLIST_ID,
+    shouldPreloadMusic,
     musicActive
   );
   const musicBadgeControl: MusicBadgeControl | null =
@@ -1044,8 +1058,8 @@ const LandingHero = ({
                 <div className="result-info">
                   <p className="result-event">{result.name}</p>
                   <p className="result-participants">
-                    {popularSport ? `${popularSport} · ` : ""}
-                    {teamLabel} · {playerPool} player pool
+                    {popularSport ? `${popularSport} ? ` : ""}
+                    {teamLabel} ? {playerPool} player pool
                   </p>
                 </div>
                 <button className="btn outline" onClick={() => onViewResults(result.id)}>
@@ -2363,14 +2377,6 @@ const LiveAuctionBoard = ({
             <p className="eyebrow">On deck</p>
             <div className="deck-title-row">
               <h2>{activeSlot ? activeSlot.name : "No players left"}</h2>
-              <button
-                type="button"
-                className={`audio-toggle ${audioEnabled ? "active" : ""}`}
-                onClick={onToggleAudio}
-                aria-label={audioEnabled ? "Mute auction announcer" : "Enable auction announcer"}
-              >
-                <span aria-hidden="true">{audioEnabled ? "ðŸ”Š" : "ðŸ”‡"}</span>
-              </button>
             </div>
             {activeSlot && (
               <p>
@@ -3586,6 +3592,10 @@ const useAdminAutomation = (
 };
 
 export default App;
+
+
+
+
 
 
 
